@@ -323,7 +323,7 @@ const cplOf=x=>(x.leads&&x.sp>0)?+((x.sp*taxf())/x.leads).toFixed(2):null;
 const cpmqlOf=x=>(x.mqls&&x.sp>0)?+((x.sp*taxf())/x.mqls).toFixed(2):null;
 function comboChart(id, d){
   destroy(id); const el=document.getElementById(id); if(!el) return;
-  const labels=d.map(x=>x.d.slice(5)), mut=cmuted(), gr=cgrid();
+  const labels=d.map(x=>ddmm(x.d)), mut=cmuted(), gr=cgrid();
   const cLeads=cvar('--chart-leads'), cMqls=cvar('--chart-mqls'), cGasto=cvar('--chart-gasto'),
         cCpl=cvar('--chart-cpl')||cink(), cCpmql=cvar('--chart-cpmql');
   charts[id]=new Chart(el,{
@@ -382,7 +382,7 @@ function indChart(id, d, series){
   const mut=cmuted(), dual=series.some(s=>s.axis==='y1');
   const tick=t=>v=>fmtByType(t)(v);
   charts[id]=new Chart(el,{type:'line',
-    data:{labels:d.map(x=>x.d.slice(5)), datasets:series.map(s=>({label:s.label,
+    data:{labels:d.map(x=>ddmm(x.d)), datasets:series.map(s=>({label:s.label,
       data:d.map(x=>{const v=s.fn(x); return v==null||!isFinite(v)?null:v;}),
       borderColor:s.color,backgroundColor:s.color,yAxisID:s.axis||'y',borderWidth:2,pointRadius:2,spanGaps:true,tension:.25}))},
     options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
@@ -447,7 +447,7 @@ function cplByDimChart(id, fL, fM, agg, dim, selSet){
     return {label:String(mv), data, borderColor:col, backgroundColor:col, borderWidth:2, pointRadius:2, tension:.25, spanGaps:true};
   });
   charts[id]=new Chart(el,{type:'line',
-    data:{labels:days.map(d=>d.slice(5)), datasets:dsets},
+    data:{labels:days.map(d=>ddmm(d)), datasets:dsets},
     options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'nearest',intersect:false},
       // clique em qualquer ponto/linha do gráfico filtra igual clicar na linha da tabela
       onClick:(e,act)=>{ if(act.length){ const idx=act[0].datasetIndex;
@@ -485,7 +485,7 @@ function kpiCard(k){ return `<div class="kpi ${k.hero?'hero':''}"><div class="kl
 /* ---------------- PAGE 1: Visão Geral ---------------- */
 /* IDs dos elementos por página — a Visão Geral e o Insights de IA compartilham o
    MESMO corpo (renderGeralCore), só mudam os alvos no DOM. */
-const GERAL_IDS={funnel:'geralFunnel',kpis2:'geralKpis2',combo:'gCombo',daily:'gDaily',
+const GERAL_IDS={funnel:'geralFunnel',kpis2:'geralKpis2',combo:'gCombo',daily:'gDaily',alerts:'geralAlerts',
   adset:'gAdset',fat:'gFat',papel:'gPapel',desafio:'gDesafio',mqlAd:'gMqlAd',mqlAdset:'gMqlAdset',orig:'gOrig',comp:'gComp'};
 const REL_IDS  ={funnel:'relFunnel', kpis2:'relKpis2', combo:'rCombo',daily:'rDaily',
   adset:'rAdset',fat:'rFat',papel:'rPapel',desafio:'rDesafio',mqlAd:'rMqlAd',mqlAdset:'rMqlAdset',orig:'rOrig',comp:'rComp'};
@@ -502,6 +502,26 @@ function shortFat(s){
   return u1===u2 ? `R$ ${m[1]} a ${m[3]}${u2?' '+u2:''}` : `R$ ${m[1]}${u1?' '+u1:''} a ${m[3]}${u2?' '+u2:''}`;
 }
 function renderGeral(){ renderGeralCore(GERAL_IDS); }
+/* Alertas de qualidade dos dados (período selecionado):
+   1. lead PAGO com UTM vazia/macro não substituída ("{{campaign.name}}") — fica sem anúncio;
+   2. dia FECHADO com gasto e zero inscrições — formulário/página/UTM quebrados? */
+function renderAlerts(id, fLpago, dd){
+  const el=document.getElementById(id); if(!el) return;
+  const out=[];
+  const semUtm=fLpago.filter(l=>String(l.camp||'').startsWith('(sem UTM'));
+  if(semUtm.length){
+    const lst=semUtm.slice().sort((a,b)=>(a.d+a.h)<(b.d+b.h)?1:-1).map(l=>`${l.nm} (${ddmm(l.d)} ${l.h||''})`).join(' · ');
+    out.push(`<b>${semUtm.length} lead${semUtm.length>1?'s':''} pago${semUtm.length>1?'s':''} sem UTM de campanha</b> — ${semUtm.length>1?'chegaram':'chegou'} com o link sem os parâmetros preenchidos (ex.: <code>{{campaign.name}}</code>), então não dá para saber de qual anúncio vieram. Confira o parâmetro de URL dos anúncios. <span class="al-list">${lst}</span>`);
+  }
+  const zero=dd.filter(x=>x.d<TODAY && x.sp>0 && x.leads===0);
+  if(zero.length){
+    out.push(`<b>${zero.length} dia${zero.length>1?'s':''} com gasto e nenhuma inscrição</b> — `+zero.map(x=>`${ddmm(x.d)} (${brl(x.sp*taxf())})`).join(' · ')
+      +`. Vale conferir se o formulário/página estavam gravando nesses dias.`);
+  }
+  const fnr=B.faturamento_nao_reconhecido||[];
+  if(fnr.length) out.push(`<b>Faixa de faturamento não reconhecida</b> (conta como não‑MQL): ${fnr.map(escHtml).join(' · ')}.`);
+  el.innerHTML=out.length?`<div class="alerts"><div class="al-title">⚠ Alertas de dados</div>${out.map(t=>`<div class="al-item">${t}</div>`).join('')}</div>`:'';
+}
 function renderGeralCore(ids){
   const fL=leadsActive(), fM=metaActive();
   const t=totals(fL,fM), dv=derive(t), g=dv.gasto;
@@ -537,6 +557,7 @@ function renderGeralCore(ids){
     {label:'Origem dos leads',val:intf(fLpago.length)+' : '+intf(nSocial),aux:'Tráfego pago : Social (orgânico)'},
   ];
   document.getElementById(ids.kpis2).innerHTML=k2.map(kpiCard).join('');
+  if(ids.alerts) renderAlerts(ids.alerts, fLpago, dd);
   comboChart(ids.combo, dd);
   // distribuição: contagem de leads (ou MQLs) por uma dimensão do lead
   const countBy=(arr,key)=>{ const m={}; arr.forEach(l=>{ const k=l[key]||'Sem resposta'; m[k]=(m[k]||0)+1; });
@@ -863,6 +884,32 @@ function selDim(dim,key,ctrl){
     Object.values(sets).forEach(x=>x.clear()); if(!sole) s.add(key); }
   renderMeta();
 }
+/* Caminho 1 (página) × Caminho 2 (formulário direto) — ver build.py::CAMINHO_TOKENS.
+   Segue o período e o filtro cruzado da aba. Vendas: sem fonte ainda. */
+const CAM_LABEL={lp:'Caminho 1 · Página → formulário',form:'Caminho 2 · Formulário direto',ni:'Não identificado (conteúdo + leads sem UTM)'};
+function renderCaminhos(fL,fM){
+  const agg={}; const g=k=>agg[k]||(agg[k]=emptyAgg());
+  fM.forEach(r=>addMeta(g(r.cam||'ni'),r)); fL.forEach(r=>addLead(g(r.cam||'ni'),r));
+  const order=['lp','form','ni'];
+  const rows=order.filter(k=>agg[k]||k!=='ni').map(k=>{ const a=agg[k]||emptyAgg(), d=derive(a);
+    const ni=k==='ni';   // gasto de conteúdo/seguidores + leads sem UTM: custos não se relacionam
+    return {k, cells:{cam:CAM_LABEL[k],gasto:d.gasto,cl:a.cl,pv:a.pv,leads:a.leads,cpl:ni?null:d.cpl,conv:ni?null:(a.cl?a.leads/a.cl:null),
+      mqls:a.mqls,txmql:ni?null:d.txmql,cpmql:ni?null:d.cpmql,share:null,vend:null}}; });
+  const tot=totals(fL,fM), td=derive(tot);
+  rows.forEach(r=>{ r.cells.share=td.gasto?r.cells.gasto/td.gasto:null; });
+  renderTable({id:'tCaminho', center:true, fit:true, rows,
+    total:{cam:null,gasto:td.gasto,cl:tot.cl,pv:tot.pv,leads:tot.leads,cpl:td.cpl,conv:tot.cl?tot.leads/tot.cl:null,mqls:tot.mqls,txmql:td.txmql,cpmql:td.cpmql,share:1,vend:null},
+    cols:[{key:'cam',label:'Caminho',type:'dim'},{key:'gasto',label:'Gasto',type:'brl'},{key:'share',label:'% da verba',type:'pct'},
+      {key:'cl',label:'Cliques',type:'int'},{key:'pv',label:'Page Views',type:'int'},{key:'leads',label:'Leads',type:'int'},
+      {key:'conv',label:'Leads ÷ Cliques',type:'pct'},{key:'cpl',label:'CPL',type:'brl'},{key:'mqls',label:'MQLs',type:'int'},
+      {key:'txmql',label:'Tx MQL',type:'pct'},{key:'cpmql',label:'CPMQL',type:'brl'},{key:'vend',label:'Vendas',type:'int'}]});
+  const nForm=(agg.form&&(agg.form.sp||agg.form.leads))?1:0;
+  document.getElementById('caminhoNote').innerHTML=
+    'Identificação pelo nome da campanha/conjunto/anúncio ou pelas UTMs: <b>LP</b>/<b>PAGINA</b> = Caminho 1 · <b>FORM</b>/<b>DIRETO</b> = Caminho 2 (ex.: <code>MS | E2-CAP | FORM | …</code> ou <code>utm_source=meta-form</code>). '
+    +(B.caminho_inferido?'Campanhas sem esse marcador mas com Page Views foram <b>inferidas como Caminho 1</b>. ':'')
+    +(nForm?'':'<b>Nenhuma campanha do Caminho 2 identificada ainda</b> — quando subir, use o marcador no nome. ')
+    +'Como o Caminho 2 não passa pela página, compare pelos custos (CPL/CPMQL) e por <b>Leads ÷ Cliques</b>, não por ConvLP. Em "Não identificado" os custos ficam "-": o gasto é da campanha de seguidores/conteúdo e os leads vieram sem UTM, então não se relacionam. Vendas por caminho entram quando houver a planilha do comercial.';
+}
 function renderMeta(){
   const F=metaScope(null), fL=F.fL, fM=F.fM;   // KPIs, funil, graficos e tabela diaria
   const t=totals(fL,fM);
@@ -889,6 +936,7 @@ function renderMeta(){
       {key:'gasto',label:'Gasto',type:'brl'},{key:'pv',label:'Page Views',type:'int'},{key:'convlp',label:'ConvLP',type:'pct'}],
     rows:topCplRows});
 
+  renderCaminhos(fL,fM);
   const dl=dMeta.slice().reverse();
   renderTable({id:'tDaily', cols:DAILY_COLS, center:true, fit:true,
     rows:dl.map(x=>{const d=derive(x); return {k:x.d, cells:dailyCells(x,d)};}),
@@ -1303,7 +1351,16 @@ document.getElementById('periodPop').addEventListener('click',e=>e.stopPropagati
 document.addEventListener('click',()=>{ if(ppIsOpen()) ppClose(); });
 document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&ppIsOpen()) ppClose(); });
 document.getElementById('clearBtn').addEventListener('click',()=>{ STATE.mSelC.clear();STATE.mSelA.clear();STATE.mSelAd.clear();STATE.selDays.clear(); applyPreset('mes'); });
-document.getElementById('refreshBtn').addEventListener('click',function(){ this.classList.add('loading'); location.href=location.pathname+'?t='+Date.now()+location.hash; });
+/* Modo cliente: esconde lista de leads, alertas, notas técnicas e a aba Insights —
+   para mandar print/link ao cliente. Ativa por botão ou pelo link com ?cliente=1. */
+function applyClientMode(on){ document.documentElement.classList.toggle('client-mode',on);
+  const b=document.getElementById('clientBtn'); if(b) b.classList.toggle('on',on);
+  if(on&&STATE.page==='rel') setPage('geral'); }
+(function(){ const on=/[?&]cliente=1\b/.test(location.search); applyClientMode(on);
+  document.getElementById('clientBtn').addEventListener('click',()=>{ const now=!document.documentElement.classList.contains('client-mode');
+    applyClientMode(now); const u=new URL(location.href); if(now) u.searchParams.set('cliente','1'); else u.searchParams.delete('cliente');
+    history.replaceState(null,'',u.pathname+u.search+location.hash); renderAll(); }); })();
+document.getElementById('refreshBtn').addEventListener('click',function(){ this.classList.add('loading'); location.href=location.pathname+'?t='+Date.now()+(document.documentElement.classList.contains('client-mode')?'&cliente=1':'')+location.hash; });
 
 /* painel de Metas & parâmetros — edita ao vivo, salva em localStorage e recolore
    a tabela de anúncios (sem re-renderizar os gráficos) */
@@ -1332,4 +1389,4 @@ syncDateInputs();
 setPage({'#meta':'meta','#rel':'rel','#pace':'pace'}[location.hash]||'geral');
 
 /* auto-refresh com cache-bust ~30 min */
-setTimeout(()=>{ location.href=location.pathname+'?t='+Date.now()+location.hash; }, 30*60*1000);
+setTimeout(()=>{ location.href=location.pathname+'?t='+Date.now()+(document.documentElement.classList.contains('client-mode')?'&cliente=1':'')+location.hash; }, 30*60*1000);

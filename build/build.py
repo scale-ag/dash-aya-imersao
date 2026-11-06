@@ -130,8 +130,11 @@ TOP_ADS_N = 10             # nº de linhas de referência dos rankings
 # Metas & parâmetros da conta (DEFAULTS do painel editável da aba Insights de IA).
 # São só o valor inicial: o gestor edita no navegador (localStorage) e a tabela
 # de anúncios recolore CPL/CPMQL e reavalia o Status ao vivo. None = "não definida".
-META_CPL = None            # meta de CPL (R$/lead); None = não definida
-META_CPMQL = None          # meta de CPMQL (R$/MQL); None = não definida
+# Metas iniciais sugeridas (custo por venda alvo R$ 700 = R$ 70.000 / 100 vagas):
+# CPL R$ 70 supõe ~10% dos leads virando venda; CPMQL R$ 160 supõe ~23% dos MQLs
+# (Tx MQL ~44%). Hipótese de trabalho — recalibrar quando houver dados de vendas.
+META_CPL = 70.0            # meta de CPL (R$/lead); None = não definida
+META_CPMQL = 160.0         # meta de CPMQL (R$/MQL); None = não definida
 VOLUME_MIN_AMOSTRAL = SAMPLE_MIN_LEADS  # leads mínimos p/ amostra confiável
 N_DIAS_CORTE = 5           # dias consecutivos acima do teto p/ considerar corte
 
@@ -161,6 +164,33 @@ PLANO = {
     # (cada mês é distribuído igualmente pelos dias do plano dentro dele).
     "orcamento_mensal": None,
 }
+
+# --------------------------------------------------------------------------- #
+# Caminho de captação (briefing: medir os dois separadamente)
+#   Caminho 1 = criativo -> PÁGINA -> formulário · Caminho 2 = criativo -> FORMULÁRIO direto
+# Identificação, nesta ordem:
+#   1. token no nome da campanha/conjunto/anúncio (Meta) ou nas UTMs (lead):
+#      "LP", "PAGINA", "LANDING", "C1"  -> Caminho 1
+#      "FORM", "FORMULARIO", "DIRETO", "TYPEFORM", "C2" -> Caminho 2
+#      (token = pedaço separado por espaço, "|", "-", "_"; ex.: "MS | E2-CAP | FORM | ...")
+#   2. sem token: campanha com Landing Page Views > 0 -> Caminho 1 (INFERIDO: a página
+#      tem pixel; o Typeform direto não registra page view);
+#   3. senão -> "Não identificado" (ex.: campanha de seguidores/conteúdo).
+# --------------------------------------------------------------------------- #
+CAMINHO_TOKENS = {
+    "form": {"form", "formulario", "direto", "typeform", "c2"},
+    "lp": {"lp", "pagina", "landing", "c1"},
+}
+
+
+def caminho_por_token(*texts: str) -> str | None:
+    tokens = set(re.split(r"[^a-z0-9]+", norm(" ".join(t or "" for t in texts))))
+    if tokens & CAMINHO_TOKENS["form"]:
+        return "form"
+    if tokens & CAMINHO_TOKENS["lp"]:
+        return "lp"
+    return None
+
 
 # Vendas confirmadas (vagas): ainda SEM fonte de dados. Quando o comercial tiver uma
 # planilha de vendas, ela entra aqui e a aba Metas & Pacing passa a mostrar vendido x meta.
@@ -562,6 +592,24 @@ def process(leads_rows, meta_rows):
         for k in canon:
             m[k] = canon[k][match_key(m[k])]
 
+    # ---- Caminho de captação por linha do Meta ----
+    pv_camp: dict[str, float] = {}
+    for m in meta:
+        pv_camp[m["camp"]] = pv_camp.get(m["camp"], 0.0) + m["pv"]
+    cam_inferido = False
+    cam_por_camp: dict[str, str] = {}
+    for m in meta:
+        cam = caminho_por_token(m["camp"]) or caminho_por_token(m["adset"]) or caminho_por_token(m["ad"])
+        if not cam:
+            cam = "lp" if pv_camp.get(m["camp"], 0) > 0 else "ni"
+            m["cami"] = 1 if cam == "lp" else 0      # 1 = inferido (sem token no nome)
+            cam_inferido = cam_inferido or cam == "lp"
+        else:
+            m["cami"] = 0
+        m["cam"] = cam
+        cam_por_camp.setdefault(m["camp"], cam)
+    cam_por_tripla = {(match_key(m["camp"]), match_key(m["adset"]), match_key(m["ad"])): m["cam"] for m in meta}
+
     # ---- Leads (formulário da LP / Typeform) ----
     lheader = leads_rows[0] if leads_rows else []
     lidx = header_index(
@@ -621,6 +669,13 @@ def process(leads_rows, meta_rows):
             camp = adset = ad = "(orgânico · sem anúncio)"
             trk = 0
 
+        if src == "meta":
+            cam = (cam_por_tripla.get((match_key(camp), match_key(adset), match_key(ad))) if trk else None) \
+                or caminho_por_token(cell(row, lidx["utm_source"]), cell(row, lidx["utm_campaign"]),
+                                     cell(row, lidx["utm_term"]), cell(row, lidx["utm_content"])) \
+                or cam_por_camp.get(camp) or "ni"
+        else:
+            cam = "org"
         fat_raw = cell(row, lidx["faturamento"])
         piso = faturamento_piso(fat_raw)
         if fat_raw and piso is None:
@@ -636,6 +691,7 @@ def process(leads_rows, meta_rows):
             # 1 = campanha+conjunto+anúncio das UTMs existem na aba de Queries
             # (tem gasto/impressões rastreados); 0 = lead pago sem mídia correspondente.
             "trk": trk,
+            "cam": cam,                                    # lp | form | ni | org
             "q": 1 if (piso is not None and piso >= MQL_MIN_FATURAMENTO) else 0,   # MQL
             "fat": pretty_answer(fat_raw),
             "fatv": piso,                                  # piso da faixa (ordena o gráfico)
@@ -677,6 +733,7 @@ def process(leads_rows, meta_rows):
             "faturamento_nao_reconhecido": sorted(fat_nao_reconhecido),
             # metas/cronograma do briefing (aba Metas & Pacing)
             "plano": PLANO,
+            "caminho_inferido": cam_inferido,
             "vendas_fonte": VENDAS_FONTE,
         },
         "leads": leads,

@@ -108,6 +108,17 @@ Registro de meta: `{d,camp,adset,ad,sp,im,cl,rc,pv}`.
 4. **Insights de IA** — espelha a Visão Geral + Metas (CPL, CPMQL, volume mínimo, N dias) +
    Top Anúncios (ordem: MQLs → leads → CPL; status pelo CPL) + Insights de Tráfego.
 
+**Extras:**
+- **Caminho 1 × Caminho 2** (aba Meta Ads, `renderCaminhos`): `cam` = `lp` | `form` | `ni` | `org` em leads e meta
+  (`build.py::caminho_por_token`): token `LP/PAGINA/LANDING/C1` ou `FORM/FORMULARIO/DIRETO/TYPEFORM/C2` no nome
+  da campanha/conjunto/anúncio ou nas UTMs; sem token, campanha com Page Views > 0 = Caminho 1 (inferido);
+  senão "Não identificado" (custos "-").
+- **Alertas de dados** (topo da Visão Geral, `renderAlerts`): leads pagos sem UTM, dias fechados com gasto e 0
+  inscrições, faixa de faturamento não reconhecida.
+- **Modo cliente** (botão ou `?cliente=1`): esconde `.tech` (lista de leads, alertas, aba Insights) e as notas.
+- Metas padrão: `META_CPL = 70`, `META_CPMQL = 160` (hipótese: CAC R$ 700 com ~10% lead→venda).
+- Datas dos gráficos em dd/mm (`ddmm`).
+
 **Regras das tabelas:** cabeçalho sticky; ordenação tri‑state; colunas redimensionáveis;
 "Total Geral" fixo; **nenhum valor/dimensão truncado** (tabela fit ganha rolagem lateral se
 faltar espaço — `fitColWidth`); seleção com toggle + Ctrl; filtro cruzado bidirecional.

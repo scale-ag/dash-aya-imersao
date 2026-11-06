@@ -23,7 +23,7 @@
     <div class="nav-item active" data-page="geral"><span class="ic">◱</span> Visão Geral</div>
     <div class="nav-item" data-page="meta"><span class="ic">◨</span> Meta Ads</div>
     <div class="nav-item" data-page="pace"><span class="ic">◎</span> Metas &amp; Pacing</div>
-    <div class="nav-item" data-page="rel"><span class="ic">▤</span> Insights de IA</div>
+    <div class="nav-item tech" data-page="rel"><span class="ic">▤</span> Insights de IA</div>
     <div class="foot">Somente leitura · atualiza ~30 min<br><span id="buildFoot"></span></div>
   </aside>
 
@@ -56,6 +56,7 @@
         </div>
       </div>
       <button class="btn" id="clearBtn">Remover Filtros</button>
+      <button class="btn" id="clientBtn" title="Esconde lista de leads, alertas e notas técnicas — para mandar print/link ao cliente">👁 Modo cliente</button>
       <button class="btn" id="themeBtn" title="Alternar tema claro/escuro">◐ Tema</button>
       <div class="sep"></div>
       <div class="tax-toggle on" id="taxToggle" title="Aplica o imposto de mídia paga (13,806%) sobre o gasto do Meta Ads e todos os custos derivados"><div class="toggle-track"><div class="toggle-thumb"></div></div><span class="toggle-label">Imposto Meta</span></div>
@@ -67,6 +68,7 @@
     <div class="page-content">
       <!-- ===================== PÁGINA 1: VISÃO GERAL ===================== -->
       <div class="page active" id="page-geral">
+        <div id="geralAlerts" class="tech"></div>
         <h2 class="sec-title">Funil de leads &amp; evolução diária</h2>
         <div class="grid funnel-grid">
           <div class="card"><div class="funnel" id="geralFunnel"></div>
@@ -125,6 +127,12 @@
           <div class="card" style="padding:0"><div style="padding:14px 15px 4px"><h3>Compilado dos Anúncios</h3><p class="hint" style="margin:0">Menor CPL no topo · só anúncios com gasto e lead</p></div><div class="tbl-wrap" style="max-height:214px;padding:0 0 10px"><table class="dt" id="mTopCpl"></table></div></div>
         </div>
 
+        <h2 class="sec-title">Caminho 1 × Caminho 2 · página × formulário direto</h2>
+        <div class="card" style="padding:0">
+          <div class="tbl-wrap"><table class="dt" id="tCaminho"></table></div>
+          <p class="note" style="padding:10px 15px" id="caminhoNote"></p>
+        </div>
+
         <h2 class="sec-title">Hierarquia · Campanha → Conjunto → Anúncio</h2>
         <div class="table-chart-pair">
           <div class="thead-title">Campanhas</div>
@@ -154,11 +162,11 @@
           </div>
         </div>
 
-        <h2 class="sec-title">Leads do período <span class="pill q" id="qCount"></span></h2>
+        <div class="tech"><h2 class="sec-title">Leads do período <span class="pill q" id="qCount"></span></h2>
         <div class="card" style="padding:0">
           <div class="tbl-wrap" style="max-height:360px"><table class="dt" id="tLeads"></table></div>
           <p class="note" style="padding:10px 15px">Só tráfego pago · horário de Brasília · MQL = faturamento acima de R$ 50 mil. Nome abreviado, e‑mail e telefone <b>mascarados</b> (página pública). A lista completa fica só na planilha.</p>
-        </div>
+        </div></div>
       </div>
 
       <!-- ===================== PÁGINA: METAS & PACING ===================== -->

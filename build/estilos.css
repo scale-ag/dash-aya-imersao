@@ -416,3 +416,12 @@
   .pc-accent{color:var(--accent-blue)}
   @media(min-width:1100px){.kpis.n2.n4{grid-template-columns:repeat(4,minmax(0,1fr))}}
   .pace-top-note{margin:-4px 0 18px; font-size:12px; line-height:1.45}
+
+  /* ---- alertas de dados ---- */
+  .alerts{background:var(--surface); border:1px solid var(--yellow); border-left:4px solid var(--yellow); border-radius:12px; padding:12px 15px; margin:0 0 18px}
+  .alerts .al-title{font-weight:700; font-size:12.5px; margin-bottom:6px; color:var(--yellow)}
+  .alerts .al-item{font-size:12.5px; line-height:1.5; margin:4px 0}
+  .alerts .al-list{display:block; color:var(--muted); font-size:11.5px}
+  /* ---- modo cliente ---- */
+  .btn#clientBtn.on{background:var(--accent-blue); color:#fff; border-color:var(--accent-blue)}
+  .client-mode .tech, .client-mode .page .note, .client-mode .pace-top-note{display:none !important}
