@@ -6,7 +6,7 @@
 
 - **Repo:** `scale-ag/dash-aya-imersao` · **Pages:** https://scale-ag.github.io/dash-aya-imersao/
 - **Modelo:** mesmas abas/layout de `dash-giaco-sdc-form7` (Visão Geral · Meta Ads · Insights de IA).
-- **Fontes:** planilha de inscrições (Typeform, gid 0) + aba `Queries | AYA` do Meta Ads (gid 0), somente leitura.
+- **Fontes:** planilha de inscrições (Typeform, 1ª aba) + aba `Queries | AYA` do Meta Ads (gid 0), somente leitura.
 - **Funil:** `Gasto → Impressões → Alcance → Cliques → Page Views → Leads → MQLs`.
 - **Lead válido:** `utm_medium` = `trafego-pago` (pago) ou `social` (orgânico) **e** cadastro completo **e** não é teste (`TEST_EMAILS`).
 - **MQL:** faturamento médio mensal (coluna H) acima de R$ 50 mil (piso da faixa ≥ 50 mil).

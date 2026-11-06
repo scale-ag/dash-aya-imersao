@@ -57,8 +57,10 @@ import urllib.request
 from datetime import datetime, timezone, timedelta
 
 # Planilha de Leads ("Imersao AYA - Inscricoes") — fonte principal (formulario da LP).
+# GID_LEADS = None -> le a 1a aba (a aba gid=0 desta planilha vem vazia; os dados
+# do Typeform estao na 1a aba).
 SPREADSHEET_ID_LEADS = "1Kjzuri6ftG0ih6_P5GPnJLJOXexXVUe9u77N1Hl5-XE"
-GID_LEADS = "0"
+GID_LEADS = None
 # Planilha de Queries do Meta Ads ("Mayara sansana - AYA"), aba "Queries | AYA".
 SPREADSHEET_ID_META = "1CNkrp663XYeyi6pEH3_nn_nkAzLfdVTQwE9VlCthen4"
 GID_META = "0"
@@ -185,12 +187,18 @@ META_REQUIRED = [["day"], ["campaign name"], ["ad set name"], ["ad name"], ["amo
                  ["impressions"], ["link clicks"]]
 
 
-def load_sheet(sid: str, gid: str, local: str | None, required, label: str) -> list[list[str]]:
+def load_sheet(sid: str, gid: str | None, local: str | None, required, label: str) -> list[list[str]]:
     if local:
         rows = read_csv_file(local)
         if not header_has(rows, required):
             sys.exit(f"[{label}] CSV local sem o cabeçalho esperado: {rows[0] if rows else '(vazio)'}")
         return rows
+    if gid is None:                      # configurado para ler direto a 1a aba
+        rows = fetch_csv(EXPORT_URL_FIRST_TAB.format(sid=sid))
+        if header_has(rows, required):
+            return rows
+        sys.exit(f"[{label}] 1a aba sem o cabeçalho esperado ({rows[0][:6] if rows else 'vazio'}) — "
+                 f"confira a planilha e se ela está compartilhada como 'qualquer pessoa com o link pode ver'.")
     rows = fetch_csv(EXPORT_URL.format(sid=sid, gid=gid))
     if header_has(rows, required):
         return rows

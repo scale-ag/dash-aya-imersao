@@ -9,7 +9,7 @@
 - **Modelo:** mesmo layout/abas de `scale-ag/dash-giaco-sdc-form7`
   (**Visão Geral · Meta Ads · Insights de IA** — ids internos `geral`/`meta`/`rel`),
   adaptado a funil de **landing page** (com Page Views) e **qualificação (MQL)**.
-- **Leads:** planilha `1Kjzuri6ftG0ih6_P5GPnJLJOXexXVUe9u77N1Hl5-XE` ("Imersão AYA - Inscrições"), gid `0`.
+- **Leads:** planilha `1Kjzuri6ftG0ih6_P5GPnJLJOXexXVUe9u77N1Hl5-XE` ("Imersão AYA - Inscrições"), **1ª aba** (`GID_LEADS = None`; a aba gid 0 vem vazia).
 - **Meta Ads:** planilha `1CNkrp663XYeyi6pEH3_nn_nkAzLfdVTQwE9VlCthen4` ("Mayara sansana - AYA"), aba `Queries | AYA`, gid `0`.
   Se o gid configurado não tiver o cabeçalho esperado, o build tenta a 1ª aba e,
   se ainda assim não achar, **falha** (o Pages mantém a última versão boa).

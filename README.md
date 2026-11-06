@@ -46,7 +46,7 @@ Faturamento médio mensal (coluna H) **acima de R$ 50 mil**: faixas
 
 | Planilha | ID | Aba (gid) | Colunas usadas |
 |---|---|---|---|
-| Leads — `Imersão AYA - Inscrições` | `1Kjzuri6ftG0ih6_P5GPnJLJOXexXVUe9u77N1Hl5-XE` | `0` | nome · WhatsApp · e-mail · papel na empresa · faturamento médio mensal (H) · comportamento do faturamento · maior desafio · `utm_source` · `utm_medium` · `utm_campaign` · `utm_term` · `utm_content` · `Submitted At` · `Token` |
+| Leads — `Imersão AYA - Inscrições` | `1Kjzuri6ftG0ih6_P5GPnJLJOXexXVUe9u77N1Hl5-XE` | 1ª aba | nome · WhatsApp · e-mail · papel na empresa · faturamento médio mensal (H) · comportamento do faturamento · maior desafio · `utm_source` · `utm_medium` · `utm_campaign` · `utm_term` · `utm_content` · `Submitted At` · `Token` |
 | Meta Ads — `Mayara sansana - AYA`, aba `Queries \| AYA` | `1CNkrp663XYeyi6pEH3_nn_nkAzLfdVTQwE9VlCthen4` | `0` | `Day` · `Campaign Name` · `Ad Set Name` · `Ad Name` · `Amount Spent` · `Impressions` · `Reach` · `Link Clicks` · `Landing Page Views` |
 
 Casamento: `utm_campaign` = `Campaign Name` · `utm_term` = `Ad Set Name` · `utm_content` = `Ad Name`.
