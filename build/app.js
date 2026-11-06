@@ -480,7 +480,7 @@ function cplByDimChart(id, fL, fM, agg, dim, selSet){
 }
 
 /* ---------------- KPI cards ---------------- */
-function kpiCard(k){ return `<div class="kpi ${k.hero?'hero':''}"><div class="kl"><span>${k.label}</span>${k.pill?`<span class="pill q">${k.pill}</span>`:''}</div><div class="kv">${k.val}</div><div class="ka">${k.aux||''}</div></div>`; }
+function kpiCard(k){ return `<div class="kpi ${k.hero?'hero':''}"><div class="kl"><span>${k.label}</span>${k.pill?`<span class="pill q">${k.pill}</span>`:''}</div><div class="kv ${k.cls||''}">${k.val}</div><div class="ka">${k.aux||''}</div></div>`; }
 
 /* ---------------- PAGE 1: Visão Geral ---------------- */
 /* IDs dos elementos por página — a Visão Geral e o Insights de IA compartilham o
@@ -949,6 +949,203 @@ function renderMeta(){
       ad:l.ad,adset:l.adset,camp:l.camp,em:l.em,ph:l.ph}}))});
 }
 
+/* ---------------- PAGE: Metas & Pacing ----------------
+   Metas e cronograma do briefing (B.plano, definido em build.py::PLANO). Este
+   painel NÃO segue o filtro de período: é sempre do início do plano até hoje.
+   - Verba planejada: orcamento_mensal (cada mês dividido pelos dias do plano
+     dentro dele) ou, se não definido, linear por dia (orçamento ÷ dias do plano).
+   - Curva de vagas: média simples dentro de cada fase (como no briefing).
+   - Ritmos/projeções: média dos últimos 7 dias FECHADOS (hoje é parcial e entra
+     só no acumulado). Gasto segue o toggle "Imposto Meta" (taxf). */
+const PL = B.plano || null;
+const VENDAS = DATA.vendas || [];
+const dayDiff=(a,b)=>Math.round((new Date(b+'T00:00:00')-new Date(a+'T00:00:00'))/86400000);  // b - a, em dias
+const daysIncl=(a,b)=>dayDiff(a,b)+1;
+function dateList(a,b){ const out=[]; if(!a||!b||a>b) return out; for(let d=a; d<=b; d=addDays(d,1)) out.push(d); return out; }
+const ddmm=d=>d.slice(8,10)+'/'+d.slice(5,7);
+const MES_PT=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+const mesLabel=m=>MES_PT[+m.slice(5,7)-1]+'/'+m.slice(2,4);
+const paceCls=(r,lo,hi,lo2,hi2)=> r==null||!isFinite(r)?'' : (r>=lo&&r<=hi)?'pc-good' : (r>=lo2&&r<=hi2)?'pc-warn' : 'pc-bad';
+function planDailyMap(){
+  const days=dateList(PL.inicio, PL.fim_verba), map={};
+  const om=PL.orcamento_mensal;
+  if(!om){ const v=PL.orcamento_total/days.length; days.forEach(d=>map[d]=v); return map; }
+  const perMonth={}; days.forEach(d=>{ const m=d.slice(0,7); perMonth[m]=(perMonth[m]||0)+1; });
+  days.forEach(d=>{ const m=d.slice(0,7); const v=om[m]; map[d]=(v!=null&&perMonth[m])?v/perMonth[m]:0; });
+  return map;
+}
+/* vagas esperadas acumuladas até o fim do dia d ('meta' | 'super') */
+function expectedVagas(d,key){
+  let tot=0;
+  (PL.fases||[]).forEach(f=>{ if(d>=f.fim) tot+=f[key]; else if(d>=f.inicio) tot+=f[key]*daysIncl(f.inicio,d)/daysIncl(f.inicio,f.fim); });
+  return tot;
+}
+function paceLineChart(id, labels, sets, yfmt){
+  destroy(id); const el=document.getElementById(id); if(!el) return;
+  const mut=cmuted();
+  charts[id]=new Chart(el,{type:'line',
+    data:{labels, datasets:sets.map(s=>({label:s.label,data:s.data,borderColor:s.color,backgroundColor:s.color,
+      borderWidth:s.w||2,borderDash:s.dash||[],pointRadius:0,pointHoverRadius:3,tension:0,spanGaps:false}))},
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+      plugins:{legend:{labels:{color:cink(),boxWidth:10,usePointStyle:true,font:{size:11}}},
+        tooltip:{filter:c=>c.raw!=null,callbacks:{label:c=>c.dataset.label+': '+yfmt(c.raw)}}},
+      scales:{x:{ticks:{color:mut,font:{size:10},maxTicksLimit:10,autoSkip:true},grid:{display:false}},
+        y:{beginAtZero:true,ticks:{color:mut,font:{size:10},callback:v=>yfmt(v)},grid:{color:cgrid()}}}}});
+}
+function renderPace(){
+  const sub=document.getElementById('paceSub');
+  if(!PL){ sub.textContent='Metas do briefing não configuradas (build.py::PLANO).'; return; }
+  const today=TODAY<PL.inicio?PL.inicio:(TODAY>PL.fim_verba?PL.fim_verba:TODAY);
+  const ontem=addDays(today,-1);
+  const PLAN_DAYS=daysIncl(PL.inicio,PL.fim_verba);
+  const metaV=PL.meta_vagas, superV=PL.super_vagas;
+  const cacAlvo=PL.orcamento_total/metaV, cacAlvoSuper=PL.orcamento_total/superV;
+  const temVendas=!!B.vendas_fonte;
+  const planD=planDailyMap();
+  // ---- séries diárias realizadas (todo o histórico, sem filtro de período) ----
+  const act={}; const g=d=>act[d]||(act[d]={sp:0,leads:0,mqls:0,vendas:0});
+  META.forEach(r=>{ if(r.d) g(r.d).sp+=r.sp*taxf(); });
+  LEADS.forEach(l=>{ if(l.d){ const a=g(l.d); a.leads+=1; a.mqls+=(l.q||0); } });
+  VENDAS.forEach(v=>{ if(v.d) g(v.d).vendas+=1; });
+  const val=(d,k)=>act[d]?act[d][k]:0;
+  const sumRange=(a,b,k)=>dateList(a,b).reduce((s,d)=>s+val(d,k),0);
+  const planRange=(a,b)=>dateList(a,b).reduce((s,d)=>s+(planD[d]||0),0);
+  // acumulados até agora (inclui dados anteriores ao início do plano, se houver)
+  const allDays=Object.keys(act).filter(d=>d<=today);
+  const totK=k=>allDays.reduce((s,d)=>s+act[d][k],0);
+  const gastoTot=totK('sp'), leadsTot=totK('leads'), mqlsTot=totK('mqls'), vendasTot=totK('vendas');
+  // ---- ritmo: últimos 7 dias fechados dentro do plano ----
+  const wIni=addDays(ontem,-6)<PL.inicio?PL.inicio:addDays(ontem,-6);
+  const nW=ontem>=wIni?daysIncl(wIni,ontem):0;
+  const rate=k=>nW?sumRange(wIni,ontem,k)/nW:null;
+  const rSp=rate('sp'), rLeads=rate('leads'), rMqls=rate('mqls');
+  const restVendas=Math.max(0,dayDiff(today,PL.fim_vendas));   // dias a partir de amanhã
+  const restVerba=Math.max(0,dayDiff(today,PL.fim_verba));
+  const projSp=rSp==null?null:gastoTot+rSp*restVerba;
+  const projLeads=rLeads==null?null:leadsTot+rLeads*restVendas;
+  const projMqls=rMqls==null?null:mqlsTot+rMqls*restVendas;
+  // ---- pacing até ontem ----
+  const planOntem=ontem>=PL.inicio?planRange(PL.inicio,ontem):0;
+  const gastoOntem=ontem>=PL.inicio?sumRange(PL.inicio,ontem,'sp'):0;
+  const pacVerba=planOntem?gastoOntem/planOntem:null;
+  const expMeta=ontem>=PL.inicio?expectedVagas(ontem,'meta'):0, expSuper=ontem>=PL.inicio?expectedVagas(ontem,'super'):0;
+  const vendasOntem=ontem>=PL.inicio?sumRange(PL.inicio,ontem,'vendas'):0;
+  const faseHoje=(PL.fases||[]).find(f=>today>=f.inicio&&today<=f.fim);
+  const ritmoSem=f=>f?[f.meta/(daysIncl(f.inicio,f.fim)/7), f.super/(daysIncl(f.inicio,f.fim)/7)]:[null,null];
+  const cpmql=(mqlsTot&&gastoTot>0)?gastoTot/mqlsTot:null;
+  const diaN=daysIncl(PL.inicio,today);
+  sub.textContent=`Hoje ${brdate(today)} (${weekday(today)}) · dia ${diaN} de ${PLAN_DAYS} do plano · faltam ${restVendas} dias para o fim das vendas (${brdate(PL.fim_vendas)}) e ${dayDiff(today,PL.imersao)} para a imersão (${brdate(PL.imersao)})`;
+  document.getElementById('paceTopNote').innerHTML=
+    `Sempre do início do plano (${brdate(PL.inicio)}) até hoje — <b>não segue o filtro de período</b>. Gasto ${STATE.tax?'<b>com</b>':'<b>sem</b>'} o imposto Meta (toggle no topo). `
+    +`Verba planejada: ${PL.orcamento_mensal?'<b>divisão mensal definida</b>':'<b>plano linear</b> ('+brl(PL.orcamento_total/PLAN_DAYS)+'/dia) até o Rafael definir a divisão por mês'}. `
+    +`Ritmos e projeções = média dos últimos 7 dias fechados (${nW?brdate(wIni)+' a '+brdate(ontem):'sem dias fechados ainda'}). `
+    +(temVendas?'':'<b>Vendas: ainda sem fonte de dados</b> — conecte a planilha de vendas do comercial para ver vendido × meta. ')
+    +`Conversões MQL→venda supõem que as vendas saem dos MQLs.`;
+  // ---- KPIs: vagas ----
+  const [rsM,rsS]=ritmoSem(faseHoje);
+  const kv=[
+    {label:'Vagas vendidas',val:temVendas?intf(vendasTot)+' / '+intf(metaV):'—',
+      aux:temVendas?pct(vendasTot/metaV)+' da meta · '+pct(vendasTot/superV)+' da super meta':'Sem fonte de vendas conectada',
+      cls:temVendas?paceCls(expMeta?vendasOntem/expMeta:null,1,9e9,0.85,1):''},
+    {label:'Vagas esperadas até ontem',val:numf(expMeta)+' <small>meta</small>',
+      aux:numf(expSuper)+' na super meta · '+(faseHoje?faseHoje.nome+': '+numf(rsM)+' a '+numf(rsS)+' vendas/semana':'fora das fases de venda')},
+    {label:'Vagas/dia necessárias',val:restVendas?num2f(Math.max(0,metaV-vendasTot)/restVendas)+'/dia':'-',
+      aux:(restVendas?'super meta: '+num2f(Math.max(0,superV-vendasTot)/restVendas)+'/dia · ':'')+restVendas+' dias até '+brdate(PL.fim_vendas).slice(0,5)+(temVendas?'':' (0 vendas registradas)')},
+    {label:'MQL→venda p/ bater a meta',val:projMqls?pct(metaV/projMqls):'-',
+      aux:projMqls?'super meta: '+pct(superV/projMqls)+' · '+intf(projMqls)+' MQLs projetados':'sem ritmo de MQLs ainda'},
+    {label:'MQL→venda p/ custo ≤ '+brl(cacAlvo),val:cpmql?pct(cpmql/cacAlvo):'-',
+      aux:cpmql?'CPMQL atual '+brl(cpmql)+' · super meta ('+brl(cacAlvoSuper)+'): '+pct(cpmql/cacAlvoSuper):'sem MQL ainda'},
+  ];
+  document.getElementById('paceKpisVagas').innerHTML=kv.map(kpiCard).join('');
+  // ---- KPIs: verba & funil ----
+  const dev=projSp==null?null:projSp/PL.orcamento_total;
+  const amanha=addDays(today,1);
+  const kb=[
+    {label:'Investido até agora',val:brl(gastoTot),aux:pct(gastoTot/PL.orcamento_total)+' da verba · '+pct(diaN/PLAN_DAYS)+' do período'},
+    {label:'Pacing da verba (até ontem)',val:pct(pacVerba),aux:brl(gastoOntem)+' gasto × '+brl(planOntem)+' planejado',
+      cls:paceCls(pacVerba,0.9,1.1,0.75,1.25)},
+    {label:'Projeção de gasto até '+brdate(PL.fim_verba).slice(0,5),val:brl(projSp),
+      aux:projSp==null?'sem ritmo ainda':((projSp>=PL.orcamento_total?'+':'−')+brl(Math.abs(projSp-PL.orcamento_total))+' vs orçamento · ritmo '+brl(rSp)+'/dia'),
+      cls:paceCls(dev,0.9,1.1,0.75,1.25)},
+    {label:'Verba disponível por dia',val:restVerba?brl(Math.max(0,PL.orcamento_total-gastoTot)/restVerba):'-',
+      aux:'a partir de amanhã · plano: '+brl(planD[amanha]!=null?planD[amanha]:PL.orcamento_total/PLAN_DAYS)+'/dia'},
+    {label:'Leads · MQLs projetados até '+brdate(PL.fim_vendas).slice(0,5),val:projLeads==null?'-':intf(projLeads)+' · '+intf(projMqls),
+      aux:rLeads==null?'sem ritmo ainda':'ritmo: '+numf(rLeads)+' leads/dia · '+numf(rMqls)+' MQLs/dia'},
+  ];
+  document.getElementById('paceKpisVerba').innerHTML=kb.map(kpiCard).join('');
+  // ---- curvas ----
+  const dVerba=dateList(PL.inicio,PL.fim_verba), dVend=dateList(PL.inicio,PL.fim_vendas);
+  const firstAct=Object.keys(act).sort()[0]; const pre=k=>firstAct&&firstAct<PL.inicio?sumRange(firstAct,addDays(PL.inicio,-1),k):0;
+  const cum=(days,fnDay,start)=>{ let s=start||0; return days.map(d=>{ s+=fnDay(d); return s; }); };
+  const planCum=cum(dVerba,d=>planD[d]||0);
+  const spCum=cum(dVerba,d=>val(d,'sp'),pre('sp'));
+  const cBad=cvar('--chart-gasto'), cMut=cvar('--muted'), cL=cvar('--chart-leads'), cQ=cvar('--chart-mqls'), cG=cvar('--good');
+  paceLineChart('paceChVerba', dVerba.map(ddmm), [
+    {label:'Planejado',data:planCum,color:cMut,dash:[5,4]},
+    {label:'Realizado',data:dVerba.map((d,i)=>d<=today?spCum[i]:null),color:cBad,w:2.5},
+    {label:'Projeção',data:dVerba.map((d,i)=>d<today||rSp==null?null:gastoTot+rSp*dayDiff(today,d)),color:cBad,dash:[2,3]},
+  ], v=>brl(v).replace(',00',''));
+  const vendCum=cum(dVend,d=>val(d,'vendas'),pre('vendas'));
+  const setsV=[
+    {label:'Meta (100)',data:dVend.map(d=>+expectedVagas(d,'meta').toFixed(1)),color:cL,dash:[5,4]},
+    {label:'Super meta (150)',data:dVend.map(d=>+expectedVagas(d,'super').toFixed(1)),color:cQ,dash:[5,4]},
+  ];
+  if(temVendas) setsV.push({label:'Vendas',data:dVend.map((d,i)=>d<=today?vendCum[i]:null),color:cG,w:2.5});
+  paceLineChart('paceChVagas', dVend.map(ddmm), setsV, v=>numf(v));
+  const lCum=cum(dVend,d=>val(d,'leads'),pre('leads')), qCum=cum(dVend,d=>val(d,'mqls'),pre('mqls'));
+  paceLineChart('paceChFunil', dVend.map(ddmm), [
+    {label:'Leads',data:dVend.map((d,i)=>d<=today?lCum[i]:null),color:cL,w:2.5},
+    {label:'MQLs',data:dVend.map((d,i)=>d<=today?qCum[i]:null),color:cQ,w:2.5},
+    {label:'Projeção leads',data:dVend.map(d=>d<today||rLeads==null?null:+(leadsTot+rLeads*dayDiff(today,d)).toFixed(1)),color:cL,dash:[2,3]},
+    {label:'Projeção MQLs',data:dVend.map(d=>d<today||rMqls==null?null:+(mqlsTot+rMqls*dayDiff(today,d)).toFixed(1)),color:cQ,dash:[2,3]},
+  ], v=>numf(v));
+  // ---- metas por fase ----
+  const faseRow=(nome,ini,fim,meta,sup)=>{ const n=daysIncl(ini,fim), w=n/7, ate=ontem<ini?null:(ontem>fim?fim:ontem);
+    const pv=planRange(ini,fim), gs=today<ini?0:sumRange(ini,today>fim?fim:today,'sp');
+    return {k:nome, cells:{fase:nome,periodo:brdate(ini).slice(0,5)+' a '+brdate(fim),dias:n,
+      meta:meta,sup:sup,rm:meta!=null?meta/w:null,rs:sup!=null?sup/w:null,
+      esp:meta!=null&&ate?meta*daysIncl(ini,ate)/n:(meta!=null?0:null),
+      vend:temVendas&&meta!=null?(today<ini?0:sumRange(ini,today>fim?fim:today,'vendas')):null,
+      plan:pv,gasto:gs,uso:pv?gs/pv:null}}; };
+  const fRows=(PL.fases||[]).map(f=>faseRow(f.nome,f.inicio,f.fim,f.meta,f.super));
+  const lastF=(PL.fases||[]).slice(-1)[0];
+  if(lastF && lastF.fim<PL.fim_verba) fRows.push(faseRow('Só conteúdo',addDays(lastF.fim,1),PL.fim_verba,null,null));
+  const tot={fase:null,periodo:brdate(PL.inicio).slice(0,5)+' a '+brdate(PL.fim_verba),dias:PLAN_DAYS,meta:metaV,sup:superV,rm:null,rs:null,
+    esp:expMeta,vend:temVendas?vendasTot:null,plan:planRange(PL.inicio,PL.fim_verba),gasto:gastoTot,uso:gastoTot/PL.orcamento_total};
+  renderTable({id:'paceFases', center:true, fit:true, rows:fRows, total:tot, cols:[
+    {key:'fase',label:'Fase',type:'dim'},{key:'periodo',label:'Período',type:'dim'},{key:'dias',label:'Dias',type:'int'},
+    {key:'meta',label:'Meta (vagas)',type:'int'},{key:'sup',label:'Super meta',type:'int'},
+    {key:'rm',label:'Ritmo/sem (meta)',type:'num'},{key:'rs',label:'Ritmo/sem (super)',type:'num'},
+    {key:'esp',label:'Esperado até ontem',type:'num'},{key:'vend',label:'Vendido',type:'int'},
+    {key:'plan',label:'Verba planejada',type:'brl'},{key:'gasto',label:'Gasto',type:'brl'},{key:'uso',label:'% da verba usada',type:'pct'}]});
+  // ---- verba por mês ----
+  const meses=[...new Set(dVerba.map(d=>d.slice(0,7)))];
+  const mRows=meses.map(m=>{ const ds=dVerba.filter(d=>d.slice(0,7)===m), ini=ds[0], fim=ds[ds.length-1];
+    const pv=planRange(ini,fim), gs=today<ini?0:sumRange(ini,today>fim?fim:today,'sp');
+    const po=ontem<ini?0:planRange(ini,ontem>fim?fim:ontem), go=ontem<ini?0:sumRange(ini,ontem>fim?fim:ontem,'sp');
+    return {k:m, cells:{mes:mesLabel(m),dias:ds.length,plan:pv,gasto:gs,uso:pv?gs/pv:null,po:po,go:go,pac:po?go/po:null}}; });
+  renderTable({id:'paceMeses', center:true, fit:true, rows:mRows,
+    total:{mes:null,dias:PLAN_DAYS,plan:planRange(PL.inicio,PL.fim_verba),gasto:gastoTot,uso:gastoTot/PL.orcamento_total,po:planOntem,go:gastoOntem,pac:pacVerba},
+    cols:[{key:'mes',label:'Mês',type:'dim'},{key:'dias',label:'Dias no plano',type:'int'},{key:'plan',label:'Verba planejada',type:'brl'},
+      {key:'gasto',label:'Gasto',type:'brl'},{key:'uso',label:'% usado',type:'pct'},
+      {key:'po',label:'Planejado até ontem',type:'brl'},{key:'go',label:'Gasto até ontem',type:'brl'},{key:'pac',label:'Pacing',type:'pct'}]});
+  document.getElementById('paceMesesNote').innerHTML=PL.orcamento_mensal
+    ?'Divisão mensal definida em <code>build.py → PLANO["orcamento_mensal"]</code>; cada mês é distribuído igualmente pelos seus dias.'
+    :'<b>Plano provisório linear</b> ('+brl(PL.orcamento_total/PLAN_DAYS)+'/dia). O briefing espera a maior parte da captação em novembro e dezembro e pede que o Rafael proponha a divisão: assim que ela existir, o planejado por mês é atualizado aqui.';
+  // ---- pacing diário ----
+  const dShow=dateList(PL.inicio,today);
+  let cS=pre('sp'), cP=0, cL2=pre('leads'), cQ2=pre('mqls'), cV=pre('vendas');
+  const dRows=dShow.map(d=>{ cS+=val(d,'sp'); cP+=planD[d]||0; cL2+=val(d,'leads'); cQ2+=val(d,'mqls'); cV+=val(d,'vendas');
+    return {k:d, cells:{date:d,wd:weekday(d)+(d===today?' · hoje':''),gasto:val(d,'sp'),gac:cS,pac:cP,pc:cP?cS/cP:null,
+      leads:val(d,'leads'),lac:cL2,mqls:val(d,'mqls'),qac:cQ2,esp:expectedVagas(d,'meta'),vac:temVendas?cV:null}}; }).reverse();
+  renderTable({id:'paceDaily', center:true, fit:true, rows:dRows, cols:[
+    {key:'date',label:'Data',type:'date'},{key:'wd',label:'Dia',type:'dim'},
+    {key:'gasto',label:'Gasto',type:'brl',heat:'gasto'},{key:'gac',label:'Gasto acum.',type:'brl'},{key:'pac',label:'Planejado acum.',type:'brl'},
+    {key:'pc',label:'Pacing',type:'pct'},{key:'leads',label:'Leads',type:'int',heat:'leads'},{key:'lac',label:'Leads acum.',type:'int'},
+    {key:'mqls',label:'MQLs',type:'int',heat:'mqls'},{key:'qac',label:'MQLs acum.',type:'int'},
+    {key:'esp',label:'Vagas esperadas (meta)',type:'num'},{key:'vac',label:'Vendas acum.',type:'int'}]});
+}
+
 /* ---------------- date presets ---------------- */
 const PRESETS=[
   ['hoje','Hoje',()=>[TODAY,TODAY]],
@@ -1043,12 +1240,13 @@ function setPage(p){ STATE.page=p;
   document.getElementById('page-geral').classList.toggle('active',p==='geral');
   document.getElementById('page-meta').classList.toggle('active',p==='meta');
   document.getElementById('page-rel').classList.toggle('active',p==='rel');
-  document.getElementById('ptitle').textContent = p==='meta'?'Meta Ads':(p==='rel'?'Insights de IA':'Visão Geral');
+  document.getElementById('page-pace').classList.toggle('active',p==='pace');
+  document.getElementById('ptitle').textContent = {meta:'Meta Ads',rel:'Insights de IA',pace:'Metas & Pacing'}[p]||'Visão Geral';
   document.getElementById('navToggle').checked=false;
-  history.replaceState(null,'', p==='meta'?'#meta':(p==='rel'?'#rel':'#geral'));
+  history.replaceState(null,'', '#'+(['meta','rel','pace'].includes(p)?p:'geral'));
   renderAll();
 }
-function renderAll(){ if(STATE.page==='meta') renderMeta(); else if(STATE.page==='rel') renderRelatorio(); else renderGeral(); }
+function renderAll(){ if(STATE.page==='meta') renderMeta(); else if(STATE.page==='rel') renderRelatorio(); else if(STATE.page==='pace') renderPace(); else renderGeral(); }
 
 function applyTheme(){ const t=localStorage.getItem('dm_theme'); if(t==='light') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme','dark'); }
 applyTheme();
@@ -1092,7 +1290,7 @@ document.getElementById('buildFoot').textContent='build __BUILD_ID__';
 document.getElementById('buildFoot2').textContent='· build __BUILD_ID__';
 
 syncDateInputs();
-setPage(location.hash==='#meta'?'meta':(location.hash==='#rel'?'rel':'geral'));
+setPage({'#meta':'meta','#rel':'rel','#pace':'pace'}[location.hash]||'geral');
 
 /* auto-refresh com cache-bust ~30 min */
 setTimeout(()=>{ location.href=location.pathname+'?t='+Date.now()+location.hash; }, 30*60*1000);

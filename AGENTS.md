@@ -20,6 +20,7 @@
 | Quero mudar… | Arquivo |
 |---|---|
 | IDs/gids das planilhas, regra de lead válido, e-mails de teste, MQL, imposto, fuso | `build/build.py` |
+| Metas do briefing, cronograma, verba por mês (aba Metas & Pacing) | `build/build.py → PLANO` |
 | Só as cores (tema claro/escuro) | `build/identidade-visual.css` |
 | Layout/componentes | `build/estilos.css` |
 | KPIs, funil, tabelas, gráficos, filtro cruzado | `build/app.js` |

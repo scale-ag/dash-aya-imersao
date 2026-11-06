@@ -22,6 +22,7 @@
     <div class="sec">Dashboards</div>
     <div class="nav-item active" data-page="geral"><span class="ic">◱</span> Visão Geral</div>
     <div class="nav-item" data-page="meta"><span class="ic">◨</span> Meta Ads</div>
+    <div class="nav-item" data-page="pace"><span class="ic">◎</span> Metas &amp; Pacing</div>
     <div class="nav-item" data-page="rel"><span class="ic">▤</span> Insights de IA</div>
     <div class="foot">Somente leitura · atualiza ~30 min<br><span id="buildFoot"></span></div>
   </aside>
@@ -157,6 +158,54 @@
         <div class="card" style="padding:0">
           <div class="tbl-wrap" style="max-height:360px"><table class="dt" id="tLeads"></table></div>
           <p class="note" style="padding:10px 15px">Só tráfego pago · horário de Brasília · MQL = faturamento acima de R$ 50 mil. Nome abreviado, e‑mail e telefone <b>mascarados</b> (página pública). A lista completa fica só na planilha.</p>
+        </div>
+      </div>
+
+      <!-- ===================== PÁGINA: METAS & PACING ===================== -->
+      <div class="page" id="page-pace">
+        <div class="rel-head">
+          <div>
+            <h2 class="rel-title">Metas &amp; Pacing · <span class="pc-accent">Imersão AYA</span></h2>
+            <p class="rel-sub" id="paceSub"></p>
+          </div>
+          <div class="rel-legend">
+            <span class="rel-legend-lbl">Pacing:</span>
+            <span class="rel-chip c-green">no ritmo</span>
+            <span class="rel-chip c-yellow">atenção</span>
+            <span class="rel-chip c-red">fora do ritmo</span>
+          </div>
+        </div>
+        <p class="note pace-top-note" id="paceTopNote"></p>
+
+        <h2 class="sec-title">Vagas · meta 100 · super meta 150</h2>
+        <div class="kpis n2 n5" id="paceKpisVagas"></div>
+
+        <h2 class="sec-title">Verba &amp; funil · orçamento R$ 70.000</h2>
+        <div class="kpis n2 n5" id="paceKpisVerba"></div>
+
+        <h2 class="sec-title">Curvas acumuladas · realizado × planejado × projeção</h2>
+        <div class="ind-grid">
+          <div class="card"><h3>Verba</h3><p class="hint">Planejado acumulado · gasto realizado · projeção no ritmo dos últimos 7 dias</p><div class="chart-box"><canvas id="paceChVerba"></canvas></div></div>
+          <div class="card"><h3>Vagas</h3><p class="hint">Curva da meta (100) e da super meta (150) · vendas confirmadas</p><div class="chart-box"><canvas id="paceChVagas"></canvas></div></div>
+          <div class="card"><h3>Leads &amp; MQLs</h3><p class="hint">Acumulado realizado · projeção até o fim das vendas (05/02)</p><div class="chart-box"><canvas id="paceChFunil"></canvas></div></div>
+        </div>
+
+        <h2 class="sec-title">Metas por fase</h2>
+        <div class="card" style="padding:0">
+          <div class="tbl-wrap"><table class="dt" id="paceFases"></table></div>
+          <p class="note" style="padding:10px 15px">Ritmo = média simples do período (como no briefing). Na prática a 2ª quinzena de dezembro e o começo de janeiro tendem a ser mais lentos, então a Fase 1 precisa render mais em novembro. "Esperado até ontem" considera só dias fechados.</p>
+        </div>
+
+        <h2 class="sec-title">Verba por mês</h2>
+        <div class="card" style="padding:0">
+          <div class="tbl-wrap"><table class="dt" id="paceMeses"></table></div>
+          <p class="note" style="padding:10px 15px" id="paceMesesNote"></p>
+        </div>
+
+        <h2 class="sec-title">Pacing diário</h2>
+        <div class="card" style="padding:0">
+          <div class="tbl-wrap" style="max-height:460px"><table class="dt" id="paceDaily"></table></div>
+          <p class="note" style="padding:10px 15px">Último dia no topo · o dia de hoje é parcial · Pacing = gasto acumulado ÷ verba planejada acumulada · Leads = pago + social (mesmo universo da Visão Geral).</p>
         </div>
       </div>
 

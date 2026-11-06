@@ -97,7 +97,14 @@ Registro de meta: `{d,camp,adset,ad,sp,im,cl,rc,pv}`.
 2. **Meta Ads** — só tráfego pago; funil; combinação diária; indicadores por dia (CPM/CTR ·
    Connect/ConvLP · CPL/CPMQL); leads por anúncio; donut ConvLP; compilado de anúncios; 3 tabelas
    hierárquicas Campanha → Conjunto → Anúncio com gráfico de CPL por dia; lista de leads (mascarada).
-3. **Insights de IA** — espelha a Visão Geral + Metas (CPL, CPMQL, volume mínimo, N dias) +
+3. **Metas & Pacing** (`pace`) — metas do briefing (`build.py::PLANO`): 100 vagas (super 150),
+   Fase 1 03/11–31/12 (70/105), Fase 2 01/01–05/02 (30/45), verba R$ 70.000 de 03/11 a 23/02,
+   custo por venda alvo = verba ÷ vagas. **Não segue o filtro de período** (sempre início do plano → hoje).
+   Verba planejada = `orcamento_mensal` ou, se `None`, linear por dia (R$ 619,47). Curva de vagas =
+   média simples por fase. Ritmos/projeções = média dos últimos 7 dias **fechados** (hoje entra só no
+   acumulado). Vendas: **sem fonte** (`VENDAS_FONTE = None`, `vendas: []`) — "Vendido" fica "-".
+   KPIs, curvas acumuladas (verba · vagas · leads/MQLs), metas por fase, verba por mês, pacing diário.
+4. **Insights de IA** — espelha a Visão Geral + Metas (CPL, CPMQL, volume mínimo, N dias) +
    Top Anúncios (ordem: MQLs → leads → CPL; status pelo CPL) + Insights de Tráfego.
 
 **Regras das tabelas:** cabeçalho sticky; ordenação tri‑state; colunas redimensionáveis;

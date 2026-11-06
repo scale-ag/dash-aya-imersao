@@ -137,6 +137,37 @@ N_DIAS_CORTE = 5           # dias consecutivos acima do teto p/ considerar corte
 
 
 # --------------------------------------------------------------------------- #
+# Metas & cronograma do briefing do cliente (Briefing de Tráfego · Imersão AYA,
+# 30/10/2026) — alimentam a aba "Metas & Pacing". Datas em AAAA-MM-DD.
+# --------------------------------------------------------------------------- #
+PLANO = {
+    "inicio": "2026-11-03",          # início da verba e das vendas
+    "fim_vendas": "2027-02-05",      # vendas encerram
+    "fim_verba": "2027-02-23",       # verba termina no 1º dia da imersão (06/02-23/02 = só conteúdo)
+    "imersao": "2027-02-23",         # imersão presencial 23 e 24/02/2027
+    "ingresso": 10000.0,             # R$ por vaga
+    "orcamento_total": 70000.0,      # captação + distribuição de conteúdo, 03/11/2026 a 23/02/2027
+    "meta_vagas": 100,
+    "super_vagas": 150,
+    # Curva de vendas: média simples dentro de cada fase (como no briefing).
+    "fases": [
+        {"nome": "Fase 1", "inicio": "2026-11-03", "fim": "2026-12-31", "meta": 70, "super": 105},
+        {"nome": "Fase 2", "inicio": "2027-01-01", "fim": "2027-02-05", "meta": 30, "super": 45},
+    ],
+    # Orçamento planejado por mês (R$). None = plano LINEAR por dia (R$ 70.000 / 113 dias
+    # = R$ 619,47/dia). O briefing pede que o Rafael proponha a divisão (a maior parte da
+    # captação em nov/dez) — quando ela existir, preencha p.ex.:
+    #   {"2026-11": 25000, "2026-12": 22000, "2027-01": 15000, "2027-02": 8000}
+    # (cada mês é distribuído igualmente pelos dias do plano dentro dele).
+    "orcamento_mensal": None,
+}
+
+# Vendas confirmadas (vagas): ainda SEM fonte de dados. Quando o comercial tiver uma
+# planilha de vendas, ela entra aqui e a aba Metas & Pacing passa a mostrar vendido x meta.
+VENDAS_FONTE = None
+
+
+# --------------------------------------------------------------------------- #
 # Leitura
 # --------------------------------------------------------------------------- #
 FETCH_RETRIES = 3       # tentativas totais em caso de timeout/erro de rede no export CSV
@@ -644,9 +675,14 @@ def process(leads_rows, meta_rows):
             "leads_descartados": descartados,
             "leads_sem_meta": sem_meta,
             "faturamento_nao_reconhecido": sorted(fat_nao_reconhecido),
+            # metas/cronograma do briefing (aba Metas & Pacing)
+            "plano": PLANO,
+            "vendas_fonte": VENDAS_FONTE,
         },
         "leads": leads,
         "meta": meta,
+        # vendas confirmadas [{d}] — vazio enquanto não houver fonte de vendas
+        "vendas": [],
         # Insights de Tráfego (texto pré-escrito, lido de relatorios.json). Preenchido
         # em main() via load_briefings(); fica {} se relatorios.json não existir.
         "briefings": {},

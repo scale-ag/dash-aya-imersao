@@ -26,7 +26,11 @@ CPL, Tx MQL (MQLs ÷ Leads) e CPMQL.
 2. **Meta Ads** — só **tráfego pago**: funil, indicadores por dia, leads por anúncio,
    conversão da LP, compilado de anúncios, tabelas Campanha → Conjunto → Anúncio com
    filtro cruzado e a lista de leads do período (mascarada).
-3. **Insights de IA** — espelha a Visão Geral + metas editáveis (CPL, CPMQL, volume
+3. **Metas & Pacing** — metas do briefing (100 vagas, super meta 150, fases até 31/12 e 05/02,
+   verba de R$ 70.000 até 23/02): pacing diário da verba, vagas esperadas × vendidas, projeção de
+   gasto/leads/MQLs no ritmo dos últimos 7 dias e conversão MQL→venda necessária. Metas em
+   `build/build.py → PLANO` (inclusive a divisão da verba por mês, quando definida).
+4. **Insights de IA** — espelha a Visão Geral + metas editáveis (CPL, CPMQL, volume
    mínimo, N dias) + **Top Anúncios** com status Escalar/Manter/Observar/Cortar.
 
 ### Regra de LEAD VÁLIDO (`build/build.py` → `lead_discard_reason`)
