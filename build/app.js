@@ -1041,6 +1041,45 @@ function renderPace(){
     +`Ritmos e projeções = média dos últimos 7 dias fechados (${nW?brdate(wIni)+' a '+brdate(ontem):'sem dias fechados ainda'}). `
     +(temVendas?'':'<b>Vendas: ainda sem fonte de dados</b> — conecte a planilha de vendas do comercial para ver vendido × meta. ')
     +`Conversões MQL→venda supõem que as vendas saem dos MQLs.`;
+  // ---- quanto investir por dia (a partir de amanhã) ----
+  // O saldo da verba é redistribuído pelos dias restantes no MESMO formato do plano
+  // (linear ou divisão mensal): rec(d) = plano(d) × saldo ÷ plano restante.
+  const amanhaI=addDays(today,1);
+  const diasRest=dateList(amanhaI,PL.fim_verba);
+  const planRest=diasRest.reduce((s,d)=>s+(planD[d]||0),0);
+  const saldo=PL.orcamento_total-gastoTot;
+  const fator=saldo>0&&planRest>0?saldo/planRest:0;
+  const rec=d=>(planD[d]||0)*fator;
+  const semImp=v=>v==null?null:v/(STATE.tax?TAX:1);   // valor a configurar no Meta (sem imposto)
+  const recAm=diasRest.length?rec(amanhaI):null;
+  const recHoje=(planD[today]||0)*((PL.orcamento_total-(gastoTot-val(today,'sp')))/Math.max(1e-9,dateList(today,PL.fim_verba).reduce((s,d)=>s+(planD[d]||0),0)));
+  const gHoje=val(today,'sp');
+  const ki=[
+    {label:'Investir por dia a partir de amanhã',val:recAm==null?'-':brl(recAm),hero:true,
+      aux:STATE.tax?'com imposto · no Meta: <b>'+brl(semImp(recAm))+'</b>/dia':'sem imposto (toggle desligado)'},
+    {label:'Faixa no ritmo (±10%)',val:recAm==null?'-':brl(recAm*0.9)+' a '+brl(recAm*1.1),
+      aux:STATE.tax?'no Meta: '+brl(semImp(recAm*0.9))+' a '+brl(semImp(recAm*1.1)):'abaixo disso sobra verba; acima, estoura'},
+    {label:'Hoje até agora',val:brl(gHoje),aux:'recomendado p/ hoje: '+brl(recHoje)+' · '+pct(recHoje?gHoje/recHoje:null)+' (dia parcial)',
+      cls:''},
+    {label:'Saldo da verba',val:brl(saldo),aux:saldo<0?'<b>orçamento estourado</b>':diasRest.length+' dias até '+brdate(PL.fim_verba).slice(0,5)+' · '+pct(saldo/PL.orcamento_total)+' da verba',
+      cls:saldo<0?'pc-bad':''},
+  ];
+  document.getElementById('paceKpisInvest').innerHTML=ki.map(kpiCard).join('');
+  const mesesR=[...new Set(diasRest.map(d=>d.slice(0,7)))];
+  renderTable({id:'paceInvest', center:true, fit:true, rows:mesesR.map(m=>{ const ds=diasRest.filter(d=>d.slice(0,7)===m);
+      const tot=ds.reduce((s,d)=>s+rec(d),0);
+      return {k:m, cells:{mes:mesLabel(m),per:brdate(ds[0]).slice(0,5)+' a '+brdate(ds[ds.length-1]).slice(0,5),dias:ds.length,
+        tot:tot,dia:tot/ds.length,meta:semImp(tot/ds.length),plano:ds.reduce((s,d)=>s+(planD[d]||0),0)/ds.length}}; }),
+    total:{mes:null,per:diasRest.length?brdate(amanhaI).slice(0,5)+' a '+brdate(PL.fim_verba).slice(0,5):'-',dias:diasRest.length,
+      tot:diasRest.reduce((s,d)=>s+rec(d),0),dia:null,meta:null,plano:null},
+    cols:[{key:'mes',label:'Mês',type:'dim'},{key:'per',label:'Período',type:'dim'},{key:'dias',label:'Dias',type:'int'},
+      {key:'tot',label:'Investir no período',type:'brl'},{key:'dia',label:'Por dia'+(STATE.tax?' (c/ imposto)':''),type:'brl'},
+      {key:'meta',label:'Por dia no Meta (s/ imposto)',type:'brl'},{key:'plano',label:'Plano original/dia',type:'brl'}]});
+  document.getElementById('paceInvestNote').innerHTML=
+    'Recalculado a cada atualização: o saldo da verba (R$ 70.000 − gasto até agora) é dividido pelos dias que faltam até '+brdate(PL.fim_verba)
+    +', no mesmo formato do plano ('+(PL.orcamento_mensal?'divisão mensal':'linear')+'). Se um dia gastar mais, os próximos ficam menores, e vice-versa. '
+    +'<b>Por dia no Meta</b> = valor sem o imposto de 13,806%, que é o que se configura no gerenciador. Inclui captação + conteúdo; de 06/02 a 23/02 é só conteúdo.';
+
   // ---- KPIs: vagas ----
   const [rsM,rsS]=ritmoSem(faseHoje);
   const kv=[
@@ -1067,8 +1106,8 @@ function renderPace(){
     {label:'Projeção de gasto até '+brdate(PL.fim_verba).slice(0,5),val:brl(projSp),
       aux:projSp==null?'sem ritmo ainda':((projSp>=PL.orcamento_total?'+':'−')+brl(Math.abs(projSp-PL.orcamento_total))+' vs orçamento · ritmo '+brl(rSp)+'/dia'),
       cls:paceCls(dev,0.9,1.1,0.75,1.25)},
-    {label:'Verba disponível por dia',val:restVerba?brl(Math.max(0,PL.orcamento_total-gastoTot)/restVerba):'-',
-      aux:'a partir de amanhã · plano: '+brl(planD[amanha]!=null?planD[amanha]:PL.orcamento_total/PLAN_DAYS)+'/dia'},
+    {label:'Gasto médio por dia (dias fechados)',val:ontem>=PL.inicio?brl(gastoOntem/daysIncl(PL.inicio,ontem)):'-',
+      aux:'plano: '+brl(planD[amanha]!=null?planD[amanha]:PL.orcamento_total/PLAN_DAYS)+'/dia · últimos 7 dias: '+brl(rSp)+'/dia'},
     {label:'Leads · MQLs projetados até '+brdate(PL.fim_vendas).slice(0,5),val:projLeads==null?'-':intf(projLeads)+' · '+intf(projMqls),
       aux:rLeads==null?'sem ritmo ainda':'ritmo: '+numf(rLeads)+' leads/dia · '+numf(rMqls)+' MQLs/dia'},
   ];

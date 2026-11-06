@@ -103,6 +103,7 @@ Registro de meta: `{d,camp,adset,ad,sp,im,cl,rc,pv}`.
    Verba planejada = `orcamento_mensal` ou, se `None`, linear por dia (R$ 619,47). Curva de vagas =
    média simples por fase. Ritmos/projeções = média dos últimos 7 dias **fechados** (hoje entra só no
    acumulado). Vendas: **sem fonte** (`VENDAS_FONTE = None`, `vendas: []`) — "Vendido" fica "-".
+   "Quanto investir por dia": saldo da verba ÷ dias restantes no formato do plano (com e sem imposto),
    KPIs, curvas acumuladas (verba · vagas · leads/MQLs), metas por fase, verba por mês, pacing diário.
 4. **Insights de IA** — espelha a Visão Geral + Metas (CPL, CPMQL, volume mínimo, N dias) +
    Top Anúncios (ordem: MQLs → leads → CPL; status pelo CPL) + Insights de Tráfego.
