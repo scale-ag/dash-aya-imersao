@@ -839,6 +839,46 @@ def main():
     print(f"  meta       : {len(data['meta'])} linhas · gasto R$ {sp:,.2f} "
           f"(sem imposto; fator {TAX_FACTOR})", file=sys.stderr)
     print(f"  out        : {args.out}", file=sys.stderr)
+    print_resumo(data)
+
+
+def print_resumo(data, n_dias: int = 7):
+    """Resumo AGREGADO no log do build (sem dados pessoais): por dia e por anúncio nos
+    últimos n_dias — facilita análise sem precisar abrir a página."""
+    T = TAX_FACTOR
+    L, M = data["leads"], data["meta"]
+    dias = sorted({x["d"] for x in L + M if x["d"]})[-n_dias:]
+    print("== resumo diário (gasto c/ imposto) ==", file=sys.stderr)
+    print("  dia        gasto     PV  cliq  leads(pago+soc)  MQL  CPL     CPMQL", file=sys.stderr)
+    for d in dias:
+        sp = sum(m["sp"] for m in M if m["d"] == d) * T
+        pv = sum(m["pv"] for m in M if m["d"] == d)
+        cl = sum(m["cl"] for m in M if m["d"] == d)
+        ld = [l for l in L if l["d"] == d]
+        lp = sum(1 for l in ld if l["src"] == "meta")
+        q = sum(l["q"] for l in ld)
+        cpl = f"{sp/len(ld):7.2f}" if ld and sp else "      -"
+        cpq = f"{sp/q:8.2f}" if q and sp else "       -"
+        print(f"  {d} {sp:8.2f} {pv:6.0f} {cl:5.0f}  {len(ld):3d} ({lp}+{len(ld)-lp})        {q:3d}  {cpl} {cpq}", file=sys.stderr)
+    print("== por campanha · anúncio · dia (últimos dias; só linhas com gasto ou lead) ==", file=sys.stderr)
+    keys = sorted({(x["camp"], x["ad"]) for x in M + L if x["d"] in dias and x.get("src", "meta") == "meta"})
+    for camp, ad in keys:
+        cells = []
+        for d in dias:
+            sp = sum(m["sp"] for m in M if m["d"] == d and m["camp"] == camp and m["ad"] == ad) * T
+            ld = [l for l in L if l["d"] == d and l["camp"] == camp and l["ad"] == ad]
+            if sp >= 1 or ld:
+                cells.append(f"{d[8:]}/{d[5:7]}: R${sp:.0f} {len(ld)}L/{sum(l['q'] for l in ld)}Q")
+        if cells:
+            cshort = " | ".join(p.strip() for p in camp.split("|")[1:3] + camp.split("|")[-1:])
+            print(f"  [{cshort}] {ad[:40]} :: " + " · ".join(cells), file=sys.stderr)
+    print("== faixa de faturamento por dia (leads válidos) ==", file=sys.stderr)
+    for d in dias:
+        fx = {}
+        for l in L:
+            if l["d"] == d:
+                fx[l["fat"]] = fx.get(l["fat"], 0) + 1
+        print(f"  {d}: " + " · ".join(f"{k}: {v}" for k, v in sorted(fx.items(), key=lambda kv: (kv[0] == 'Sem resposta', kv[0]))), file=sys.stderr)
 
 
 if __name__ == "__main__":
