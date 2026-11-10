@@ -118,6 +118,11 @@ Registro de meta: `{d,camp,adset,ad,sp,im,cl,rc,pv}`.
 - **Modo cliente** (botão ou `?cliente=1`): esconde `.tech` (lista de leads, alertas, aba Insights) e as notas.
 - Metas padrão: `META_CPL = 70`, `META_CPMQL = 160` (hipótese: CAC R$ 700 com ~10% lead→venda).
 - Datas dos gráficos em dd/mm (`ddmm`).
+- **CRM do comercial** (`build.py::apply_crm`): planilha `1ML8qSJrjtwUfriAPWGG-DPI5RZnk3qJkV492lxYzSlo` gid `1516858908`
+  ("CRM Imersão AYA - Controle"). Status → etapa por palavra-chave (`crm_stage`); cruza com leads por e-mail e,
+  sem e-mail, telefone (`_ek/_pk`, removidos antes do HTML). **Observações nunca vão para a página.** Vendas =
+  status "Vendido" (data de "Data da venda" se existir; senão conta no dia de hoje). Falha no CRM não derruba o build.
+  UI: "Funil comercial" na aba Metas & Pacing (etapas, vendedores, MQLs não trabalhados) e coluna CRM na lista de leads.
 
 **Regras das tabelas:** cabeçalho sticky; ordenação tri‑state; colunas redimensionáveis;
 "Total Geral" fixo; **nenhum valor/dimensão truncado** (tabela fit ganha rolagem lateral se

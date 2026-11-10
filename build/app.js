@@ -989,11 +989,11 @@ function renderMeta(){
   document.getElementById('qCount').textContent=q.length+' leads · '+nQ+' MQL'+(nQ===1?'':'s');
   renderTable({id:'tLeads',
     cols:[{key:'d',label:'Data',type:'date'},{key:'h',label:'Hora',type:'dim',w:64},{key:'nm',label:'Nome',type:'dim'},
-      {key:'mql',label:'MQL',type:'dim',w:64},{key:'fat',label:'Faturamento mensal',type:'dim'},
+      {key:'mql',label:'MQL',type:'dim',w:64},{key:'crm',label:'CRM',type:'dim'},{key:'fat',label:'Faturamento mensal',type:'dim'},
       {key:'papel',label:'Papel na empresa',type:'dim'},{key:'desafio',label:'Maior desafio comercial',type:'dim'},
       {key:'ad',label:'Anúncio',type:'dim'},{key:'adset',label:'Conjunto',type:'dim'},
       {key:'camp',label:'Campanha',type:'dim',big:true},{key:'em',label:'E‑mail',type:'dim',w:200},{key:'ph',label:'Telefone',type:'dim',w:110}],
-    rows:q.map((l,i)=>({k:'l'+i, cells:{d:l.d,h:l.h||'-',nm:l.nm,mql:l.q?'Sim':'Não',fat:l.fat,papel:l.papel,desafio:l.desafio,
+    rows:q.map((l,i)=>({k:'l'+i, cells:{d:l.d,h:l.h||'-',nm:l.nm,mql:l.q?'Sim':'Não',crm:l.crm==null?'-':(l.crm==='fora'?'Fora do CRM':((B.crm_stages||{})[l.crm]||l.crm)),fat:l.fat,papel:l.papel,desafio:l.desafio,
       ad:l.ad,adset:l.adset,camp:l.camp,em:l.em,ph:l.ph}}))});
 }
 
@@ -1040,6 +1040,51 @@ function paceLineChart(id, labels, sets, yfmt){
       scales:{x:{ticks:{color:mut,font:{size:10},maxTicksLimit:10,autoSkip:true},grid:{display:false}},
         y:{beginAtZero:true,ticks:{color:mut,font:{size:10},callback:v=>yfmt(v)},grid:{color:cgrid()}}}}});
 }
+/* Funil comercial (CRM). Linhas do CRM sem PII: {st, vd, q, form, raw}. Leads do
+   formulário trazem crm = etapa | "fora" (não está no CRM) | null (CRM não conectado). */
+function renderCrm(){
+  const C=B.crm||{}, ST=B.crm_stages||{}, rows=DATA.crm||[];
+  const kEl=document.getElementById('paceKpisCrm'); if(!kEl) return;
+  if(!C.conectado){ kEl.innerHTML=''; document.getElementById('crmNote').textContent='CRM não conectado nesta atualização.'; return; }
+  const cnt=f=>rows.filter(f).length;
+  const vend=cnt(r=>r.st==='venda'), neg=cnt(r=>r.st==='negociacao'||r.st==='agendado'),
+        aten=cnt(r=>r.st==='iniciado'||r.st==='followup'), desq=cnt(r=>r.st==='desqualificado');
+  const pend=LEADS.filter(l=>l.crm==='fora'||l.crm==='nao_trabalhado');
+  const pendQ=pend.filter(l=>l.q);
+  const noCrm=LEADS.filter(l=>l.crm&&l.crm!=='fora').length;
+  document.getElementById('paceKpisCrm').innerHTML=[
+    {label:'Vendas (CRM)',val:intf(vend),aux:pct(vend/(PL?PL.meta_vagas:100))+' da meta de '+(PL?PL.meta_vagas:100)+' vagas',cls:vend?'pc-good':''},
+    {label:'Agendados + negociação',val:intf(neg),aux:'próximos de fechar'},
+    {label:'Em atendimento',val:intf(aten),aux:'iniciado + follow-up'},
+    {label:'Desqualificados',val:intf(desq),aux:pct(rows.length?desq/rows.length:null)+' das linhas do CRM'},
+    {label:'Leads do form sem atendimento',val:intf(pend.length),aux:'<b>'+intf(pendQ.length)+' MQL</b> entre eles · '+intf(noCrm)+' de '+intf(LEADS.length)+' leads já no CRM',cls:pendQ.length?'pc-bad':''},
+  ].map(kpiCard).join('');
+  const order=Object.keys(ST);
+  const etRows=order.map(k=>{ const rr=rows.filter(r=>r.st===k); if(!rr.length) return null;
+    const fm=rr.filter(r=>r.form);
+    return {k, cells:{et:ST[k]+(k==='outro'?' ('+[...new Set(rr.map(r=>r.raw))].join(', ')+')':''),tot:rr.length,form:fm.length,mql:fm.filter(r=>r.q).length,out:rr.length-fm.length,sh:rr.length/rows.length}}; }).filter(Boolean);
+  renderTable({id:'crmEtapas', center:true, fit:true, rows:etRows,
+    total:{et:null,tot:rows.length,form:cnt(r=>r.form),mql:cnt(r=>r.form&&r.q),out:cnt(r=>!r.form),sh:1},
+    cols:[{key:'et',label:'Etapa',type:'dim'},{key:'tot',label:'Total',type:'int'},{key:'sh',label:'%',type:'pct'},
+      {key:'form',label:'Do formulário',type:'int'},{key:'mql',label:'MQLs (form)',type:'int'},{key:'out',label:'Outras origens',type:'int'}]});
+  const vds=[...new Set(rows.map(r=>r.vd))].sort();
+  const vRows=vds.map(v=>{ const rr=rows.filter(r=>r.vd===v), c=s=>rr.filter(r=>s.includes(r.st)).length;
+    return {k:v, cells:{vd:v,tot:rr.length,ini:c(['iniciado','followup']),neg:c(['agendado','negociacao']),ven:c(['venda']),des:c(['desqualificado']),nt:c(['nao_trabalhado'])}}; });
+  const c2=s=>rows.filter(r=>s.includes(r.st)).length;
+  renderTable({id:'crmVend', center:true, fit:true, rows:vRows,
+    total:{vd:null,tot:rows.length,ini:c2(['iniciado','followup']),neg:c2(['agendado','negociacao']),ven:c2(['venda']),des:c2(['desqualificado']),nt:c2(['nao_trabalhado'])},
+    cols:[{key:'vd',label:'Vendedor',type:'dim'},{key:'tot',label:'Leads',type:'int'},{key:'ini',label:'Em atendimento',type:'int'},
+      {key:'neg',label:'Agend. / negoc.',type:'int'},{key:'ven',label:'Vendas',type:'int'},{key:'des',label:'Desqualif.',type:'int'},{key:'nt',label:'Sem status',type:'int'}]});
+  const pq=pendQ.slice().sort((a,b)=>((a.d||'')+(a.h||''))<((b.d||'')+(b.h||''))?1:-1);
+  document.getElementById('crmPendCount').textContent=pq.length+' MQL'+(pq.length===1?'':'s');
+  renderTable({id:'crmPend', center:true, fit:true, rows:pq.map((l,i)=>({k:'p'+i, cells:{d:l.d,h:l.h||'-',nm:l.nm,fat:l.fat,st:l.crm==='fora'?'Fora do CRM':'No CRM, sem status',ad:l.ad,em:l.em,ph:l.ph}})),
+    cols:[{key:'d',label:'Data',type:'date'},{key:'h',label:'Hora',type:'dim'},{key:'nm',label:'Nome',type:'dim'},{key:'fat',label:'Faturamento',type:'dim'},
+      {key:'st',label:'Situação',type:'dim'},{key:'ad',label:'Anúncio',type:'dim'},{key:'em',label:'E‑mail',type:'dim'},{key:'ph',label:'Telefone',type:'dim'}]});
+  const semData=VENDAS.filter(v=>!v.d).length;
+  document.getElementById('crmNote').innerHTML='Fonte: planilha "CRM Imersão AYA - Controle" (status atual de cada linha; observações não são exibidas). Cruzamento com o formulário por e‑mail e, sem e‑mail, por telefone. '
+    +(C.sem_form?'<b>'+C.sem_form+' linha'+(C.sem_form>1?'s':'')+' do CRM sem e‑mail/telefone do formulário</b> (outras origens: indicação, direct, lista…). ':'')
+    +(semData?'<b>'+semData+' venda'+(semData>1?'s':'')+' sem data</b> — contada'+(semData>1?'s':'')+' no dia de hoje; para o pacing por dia ficar exato, peça uma coluna "Data da venda" no CRM.':'');
+}
 function renderPace(){
   const sub=document.getElementById('paceSub');
   if(!PL){ sub.textContent='Metas do briefing não configuradas (build.py::PLANO).'; return; }
@@ -1061,7 +1106,8 @@ function renderPace(){
   // acumulados até agora (inclui dados anteriores ao início do plano, se houver)
   const allDays=Object.keys(act).filter(d=>d<=today);
   const totK=k=>allDays.reduce((s,d)=>s+act[d][k],0);
-  const gastoTot=totK('sp'), leadsTot=totK('leads'), mqlsTot=totK('mqls'), vendasTot=totK('vendas');
+  const vendSemData=VENDAS.filter(v=>!v.d).length;   // venda no CRM sem "Data da venda": conta hoje
+  const gastoTot=totK('sp'), leadsTot=totK('leads'), mqlsTot=totK('mqls'), vendasTot=totK('vendas')+vendSemData;
   // ---- ritmo: últimos 7 dias fechados dentro do plano ----
   const wIni=addDays(ontem,-6)<PL.inicio?PL.inicio:addDays(ontem,-6);
   const nW=ontem>=wIni?daysIncl(wIni,ontem):0;
@@ -1128,12 +1174,13 @@ function renderPace(){
     +', no mesmo formato do plano ('+(PL.orcamento_mensal?'divisão mensal':'linear')+'). Se um dia gastar mais, os próximos ficam menores, e vice-versa. '
     +'<b>Por dia no Meta</b> = valor sem o imposto de 13,806%, que é o que se configura no gerenciador. Inclui captação + conteúdo; de 06/02 a 23/02 é só conteúdo.';
 
+  renderCrm();
   // ---- KPIs: vagas ----
   const [rsM,rsS]=ritmoSem(faseHoje);
   const kv=[
     {label:'Vagas vendidas',val:temVendas?intf(vendasTot)+' / '+intf(metaV):'—',
       aux:temVendas?pct(vendasTot/metaV)+' da meta · '+pct(vendasTot/superV)+' da super meta':'Sem fonte de vendas conectada',
-      cls:temVendas?paceCls(expMeta?vendasOntem/expMeta:null,1,9e9,0.85,1):''},
+      cls:temVendas?paceCls(expectedVagas(today,'meta')?vendasTot/expectedVagas(today,'meta'):null,1,9e9,0.85,1):''},
     {label:'Vagas esperadas até ontem',val:numf(expMeta)+' <small>meta</small>',
       aux:numf(expSuper)+' na super meta · '+(faseHoje?faseHoje.nome+': '+numf(rsM)+' a '+numf(rsS)+' vendas/semana':'fora das fases de venda')},
     {label:'Vagas/dia necessárias',val:restVendas?num2f(Math.max(0,metaV-vendasTot)/restVendas)+'/dia':'-',
@@ -1172,7 +1219,7 @@ function renderPace(){
     {label:'Realizado',data:dVerba.map((d,i)=>d<=today?spCum[i]:null),color:cBad,w:2.5},
     {label:'Projeção',data:dVerba.map((d,i)=>d<today||rSp==null?null:gastoTot+rSp*dayDiff(today,d)),color:cBad,dash:[2,3]},
   ], v=>brl(v).replace(',00',''));
-  const vendCum=cum(dVend,d=>val(d,'vendas'),pre('vendas'));
+  const vendCum=cum(dVend,d=>val(d,'vendas')+(d===today?vendSemData:0),pre('vendas'));
   const setsV=[
     {label:'Meta (100)',data:dVend.map(d=>+expectedVagas(d,'meta').toFixed(1)),color:cL,dash:[5,4]},
     {label:'Super meta (150)',data:dVend.map(d=>+expectedVagas(d,'super').toFixed(1)),color:cQ,dash:[5,4]},
@@ -1192,7 +1239,7 @@ function renderPace(){
     return {k:nome, cells:{fase:nome,periodo:brdate(ini).slice(0,5)+' a '+brdate(fim),dias:n,
       meta:meta,sup:sup,rm:meta!=null?meta/w:null,rs:sup!=null?sup/w:null,
       esp:meta!=null&&ate?meta*daysIncl(ini,ate)/n:(meta!=null?0:null),
-      vend:temVendas&&meta!=null?(today<ini?0:sumRange(ini,today>fim?fim:today,'vendas')):null,
+      vend:temVendas&&meta!=null?(today<ini?0:sumRange(ini,today>fim?fim:today,'vendas')+(today>=ini&&today<=fim?vendSemData:0)):null,
       plan:pv,gasto:gs,uso:pv?gs/pv:null}}; };
   const fRows=(PL.fases||[]).map(f=>faseRow(f.nome,f.inicio,f.fim,f.meta,f.super));
   const lastF=(PL.fases||[]).slice(-1)[0];
@@ -1222,7 +1269,7 @@ function renderPace(){
   // ---- pacing diário ----
   const dShow=dateList(PL.inicio,today);
   let cS=pre('sp'), cP=0, cL2=pre('leads'), cQ2=pre('mqls'), cV=pre('vendas');
-  const dRows=dShow.map(d=>{ cS+=val(d,'sp'); cP+=planD[d]||0; cL2+=val(d,'leads'); cQ2+=val(d,'mqls'); cV+=val(d,'vendas');
+  const dRows=dShow.map(d=>{ cS+=val(d,'sp'); cP+=planD[d]||0; cL2+=val(d,'leads'); cQ2+=val(d,'mqls'); cV+=val(d,'vendas')+(d===today?vendSemData:0);
     return {k:d, cells:{date:d,wd:weekday(d)+(d===today?' · hoje':''),gasto:val(d,'sp'),gac:cS,pac:cP,pc:cP?cS/cP:null,
       leads:val(d,'leads'),lac:cL2,mqls:val(d,'mqls'),qac:cQ2,esp:expectedVagas(d,'meta'),vac:temVendas?cV:null}}; }).reverse();
   renderTable({id:'paceDaily', center:true, fit:true, rows:dRows, cols:[

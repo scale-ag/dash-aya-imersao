@@ -194,7 +194,111 @@ def caminho_por_token(*texts: str) -> str | None:
 
 # Vendas confirmadas (vagas): ainda SEM fonte de dados. Quando o comercial tiver uma
 # planilha de vendas, ela entra aqui e a aba Metas & Pacing passa a mostrar vendido x meta.
-VENDAS_FONTE = None
+VENDAS_FONTE = "CRM"   # vendas = linhas do CRM com status "Vendido" (ver CRM_* abaixo)
+
+# --------------------------------------------------------------------------- #
+# CRM do comercial ("CRM Imersão AYA - Controle", aba "Mayara sansana - Form Ativo")
+# Colunas usadas: e-mail · WhatsApp · Faturamento · Vendedor · Status (+ "Data da venda",
+# se existir). "Observações" NÃO é lida (a página é pública). Cruzamento com os leads do
+# formulário por e-mail e, sem e-mail, pelo telefone. Se o CRM falhar, a dash é publicada
+# sem ele (aviso no log) — nunca derruba o build.
+# --------------------------------------------------------------------------- #
+SPREADSHEET_ID_CRM = "1ML8qSJrjtwUfriAPWGG-DPI5RZnk3qJkV492lxYzSlo"
+GID_CRM = "1516858908"
+CRM_REQUIRED = [["status"], ["e-mail", "email"]]
+# etapa -> (rótulo, ordem no funil). Status do CRM mapeado por palavra-chave (crm_stage).
+CRM_STAGES = {
+    "nao_trabalhado": ("Não trabalhado", 0),
+    "iniciado": ("Iniciado", 1),
+    "followup": ("Follow-up", 2),
+    "agendado": ("Agendado", 3),
+    "negociacao": ("Negociação", 4),
+    "venda": ("Vendido", 5),
+    "desqualificado": ("Desqualificado", 6),
+    "outro": ("Outro status", 7),
+}
+
+
+def crm_stage(status: str) -> str:
+    s = norm(status)
+    if not s:
+        return "nao_trabalhado"
+    if re.search(r"vendid|comprou|ganh|fechad|pago\b|matricul", s):
+        return "venda"
+    if re.search(r"desqualif|perdid|reprov|sem interesse|descart|nao qualif", s):
+        return "desqualificado"
+    if re.search(r"negocia|proposta", s):
+        return "negociacao"
+    if re.search(r"agend|call|reuni", s):
+        return "agendado"
+    if re.search(r"follow", s):
+        return "followup"
+    if re.search(r"inici|contat|abord|andamento", s):
+        return "iniciado"
+    return "outro"
+
+
+def phone_key(p: str) -> str:
+    d = re.sub(r"\D", "", p or "")
+    return d[-11:] if len(d) >= 10 else ""
+
+
+def apply_crm(data: dict, crm_rows: list[list[str]] | None) -> None:
+    """Cruza o CRM com os leads (campos crm/vd), gera crm_rows agregáveis (sem PII)
+    e a lista de vendas. Remove as chaves internas _ek/_pk dos leads."""
+    leads = data["leads"]
+    info = {"conectado": False, "linhas": 0, "sem_form": 0, "erro": None}
+    rows_out, vendas = [], []
+    if crm_rows:
+        h = crm_rows[0]
+        idx = header_index(h, {"email": ["qual e o seu melhor e-mail", "e-mail", "email"],
+                               "phone": ["whatsapp", "telefone", "celular"],
+                               "fat": ["faturamento"], "vd": ["vendedor", "responsavel"],
+                               "st": ["status", "etapa"], "dv": ["data da venda", "data venda"]})
+        print(f"  [crm] colunas mapeadas: { {k: col_letter(v) for k, v in idx.items()} }", file=sys.stderr)
+        by_email, by_phone = {}, {}
+        for row in crm_rows[1:]:
+            if not any((c or "").strip() for c in row):
+                continue
+            st_raw = cell(row, idx["st"])
+            vd = clean_name(cell(row, idx["vd"])) or "Sem vendedor"
+            st = crm_stage(st_raw)
+            ek = norm(cell(row, idx["email"]))
+            pk = phone_key(cell(row, idx["phone"]))
+            piso = faturamento_piso(cell(row, idx["fat"]))
+            rec = {"st": st, "vd": vd, "q": 1 if (piso is not None and piso >= MQL_MIN_FATURAMENTO) else 0,
+                   "form": 0, "raw": st_raw if st == "outro" else ""}
+            rows_out.append(rec)
+            for key, dmap in ((ek, by_email), (pk, by_phone)):
+                if key:
+                    old = dmap.get(key)
+                    if old is None or CRM_STAGES[rec["st"]][1] > CRM_STAGES[old["st"]][1]:
+                        dmap[key] = rec
+            if st == "venda":
+                dv = parse_date(cell(row, idx["dv"])) if idx["dv"] is not None else None
+                vendas.append({"d": dv})
+        matched = 0
+        for l in leads:
+            rec = by_email.get(l.get("_ek") or "") or by_phone.get(l.get("_pk") or "")
+            if rec:
+                rec["form"] = 1
+                l["crm"], l["vd"] = rec["st"], rec["vd"]
+                matched += 1
+            else:
+                l["crm"], l["vd"] = "fora", ""
+        info.update(conectado=True, linhas=len(rows_out), sem_form=sum(1 for r in rows_out if not r["form"]),
+                    leads_no_crm=matched)
+    else:
+        for l in leads:
+            l["crm"], l["vd"] = None, ""
+    for l in leads:
+        l.pop("_ek", None)
+        l.pop("_pk", None)
+    data["crm"] = rows_out
+    data["vendas"] = vendas
+    data["build"]["crm"] = info
+    data["build"]["crm_stages"] = {k: v[0] for k, v in CRM_STAGES.items()}
+    data["build"]["vendas_fonte"] = "CRM" if info["conectado"] else None
 
 
 # --------------------------------------------------------------------------- #
@@ -701,6 +805,8 @@ def process(leads_rows, meta_rows):
             "nm": first_last_initial(name),
             "em": mask_email(email),
             "ph": mask_phone(phone),
+            "_ek": norm(email),             # chaves internas p/ cruzar com o CRM (removidas antes do HTML)
+            "_pk": phone_key(phone),
         })
 
     dates = sorted({d for d in ([l["d"] for l in leads if l["d"]] + [m["d"] for m in meta if m["d"]])})
@@ -804,12 +910,22 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--leads-file", help="CSV local da planilha de Leads (fonte principal)")
     ap.add_argument("--meta-file", help="CSV local da aba Queries | AYA (Meta Ads)")
+    ap.add_argument("--crm-file", help="CSV local do CRM do comercial (opcional)")
     ap.add_argument("--template", default="build/template.html")
     ap.add_argument("--out", default="dist/index.html")
     args = ap.parse_args()
 
     leads_rows, meta_rows = load_inputs(args.leads_file, args.meta_file)
     data = process(leads_rows, meta_rows)
+    crm_rows = None
+    if args.crm_file:
+        crm_rows = read_csv_file(args.crm_file)
+    elif not args.leads_file:      # build "de verdade" (Actions): busca o CRM online
+        try:
+            crm_rows = load_sheet(SPREADSHEET_ID_CRM, GID_CRM, None, CRM_REQUIRED, "crm")
+        except (SystemExit, Exception) as exc:    # CRM nunca derruba a dash
+            print(f"  [crm] AVISO: CRM não carregado ({exc!r}) — publicando sem o funil comercial", file=sys.stderr)
+    apply_crm(data, crm_rows)
 
     # Insights de Tráfego (texto pré-escrito) — lidos do arquivo versionado ao
     # lado do template. Sem chamada de API no build.
@@ -839,6 +955,13 @@ def main():
     print(f"  meta       : {len(data['meta'])} linhas · gasto R$ {sp:,.2f} "
           f"(sem imposto; fator {TAX_FACTOR})", file=sys.stderr)
     print(f"  out        : {args.out}", file=sys.stderr)
+    c = b["crm"]
+    if c["conectado"]:
+        from collections import Counter
+        et = Counter(r["st"] for r in data["crm"])
+        print(f"  crm        : {c['linhas']} linhas ({c['sem_form']} sem e-mail/telefone do formulário) · "
+              f"{c['leads_no_crm']} de {len(L)} leads válidos no CRM · etapas {dict(et)} · {len(data['vendas'])} venda(s)",
+              file=sys.stderr)
     print_resumo(data)
 
 

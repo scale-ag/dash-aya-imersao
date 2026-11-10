@@ -56,7 +56,7 @@
         </div>
       </div>
       <button class="btn" id="clearBtn">Remover Filtros</button>
-      <button class="btn" id="clientBtn" title="Esconde lista de leads, alertas e notas técnicas — para mandar print/link ao cliente">👁 Modo cliente</button>
+      <button class="btn" id="clientBtn" title="Esconde lista de leads, alertas e notas técnicas — para mandar print/link ao cliente">👁 Cliente</button>
       <button class="btn" id="themeBtn" title="Alternar tema claro/escuro">◐ Tema</button>
       <div class="sep"></div>
       <div class="tax-toggle on" id="taxToggle" title="Aplica o imposto de mídia paga (13,806%) sobre o gasto do Meta Ads e todos os custos derivados"><div class="toggle-track"><div class="toggle-thumb"></div></div><span class="toggle-label">Imposto Meta</span></div>
@@ -194,6 +194,18 @@
 
         <h2 class="sec-title">Vagas · meta 100 · super meta 150</h2>
         <div class="kpis n2 n5" id="paceKpisVagas"></div>
+
+        <h2 class="sec-title">Funil comercial · CRM (Bruna / Nuno)</h2>
+        <div class="kpis n2 n5" id="paceKpisCrm"></div>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:16px;margin-top:12px">
+          <div class="card" style="padding:0"><div style="padding:14px 15px 4px"><h3>Por etapa</h3><p class="hint" style="margin:0">Todas as linhas do CRM · formulário × outras origens</p></div><div class="tbl-wrap"><table class="dt" id="crmEtapas"></table></div></div>
+          <div class="card" style="padding:0"><div style="padding:14px 15px 4px"><h3>Por vendedor</h3><p class="hint" style="margin:0">Leads atribuídos e etapa atual</p></div><div class="tbl-wrap"><table class="dt" id="crmVend"></table></div></div>
+        </div>
+        <div class="card tech" style="padding:0;margin-top:12px">
+          <div style="padding:14px 15px 4px"><h3>MQLs do formulário ainda não trabalhados <span class="pill q" id="crmPendCount"></span></h3><p class="hint" style="margin:0">Faturamento acima de R$ 50 mil, sem status no CRM ou fora dele — prioridade para a SDR</p></div>
+          <div class="tbl-wrap" style="max-height:300px"><table class="dt" id="crmPend"></table></div>
+        </div>
+        <p class="note" id="crmNote" style="margin-top:8px"></p>
 
         <h2 class="sec-title">Verba &amp; funil · orçamento R$ 70.000</h2>
         <div class="kpis n2 n5" id="paceKpisVerba"></div>
