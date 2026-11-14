@@ -630,6 +630,30 @@ def header_index(header, wanted):
     return idx
 
 
+def header_candidates(header, aliases):
+    """Índices de TODAS as colunas cujo cabeçalho casa com algum alias, na ordem dos
+    aliases (pergunta completa primeiro) e, dentro de cada alias, exato antes de 'contém'."""
+    hn = [norm(h) for h in header]
+    out = []
+    for a in aliases:
+        a = norm(a)
+        for i, h in enumerate(hn):
+            if h.rstrip("?: ") == a and i not in out:
+                out.append(i)
+        for i, h in enumerate(hn):
+            if a and a in h and i not in out:
+                out.append(i)
+    return out
+
+
+def cell_any(row, idxs):
+    for i in idxs:
+        v = cell(row, i)
+        if v:
+            return v
+    return ""
+
+
 def cell(row, i):
     if i is None or i < 0 or i >= len(row):
         return ""
@@ -730,6 +754,15 @@ def process(leads_rows, meta_rows):
          "utm_term": ["utm_term"], "utm_content": ["utm_content"]},
     )
     print(f"  [leads] colunas mapeadas: { {k: col_letter(v) for k, v in lidx.items()} }", file=sys.stderr)
+    # Nome/WhatsApp/e-mail: TODAS as colunas candidatas (pergunta original do formulário
+    # primeiro). Usa o primeiro valor preenchido — assim, colunas extras inseridas na
+    # planilha (ex.: "nome", "whatsapp", "email" vazias no começo) não zeram os leads.
+    cand = {
+        "name": header_candidates(lheader, ["qual e o seu nome completo", "nome completo", "nome"]),
+        "email": header_candidates(lheader, ["qual e o seu melhor e-mail", "e-mail", "email"]),
+        "phone": header_candidates(lheader, ["qual e o seu whatsapp com ddd", "whatsapp", "telefone"]),
+    }
+    print(f"  [leads] candidatas: { {k: [col_letter(i) for i in v] for k, v in cand.items()} }", file=sys.stderr)
 
     leads = []
     descartados = {"utm_medium_invalido": 0, "incompleto": 0, "teste": 0, "duplicado": 0}
@@ -739,9 +772,9 @@ def process(leads_rows, meta_rows):
     for row in leads_rows[1:]:
         if not any((c or "").strip() for c in row):
             continue
-        name = cell(row, lidx["name"])
-        email = cell(row, lidx["email"])
-        phone = cell(row, lidx["phone"])
+        name = cell_any(row, cand["name"])
+        email = cell_any(row, cand["email"])
+        phone = cell_any(row, cand["phone"])
         utm_medium = cell(row, lidx["utm_medium"])
         why = lead_discard_reason(utm_medium, name, email, phone)
         if why:
