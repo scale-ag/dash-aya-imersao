@@ -842,6 +842,17 @@ def process(leads_rows, meta_rows):
             "_pk": phone_key(phone),
         })
 
+    # diagnóstico do casamento (log): UTMs de leads pagos que não existem na aba de Queries
+    from collections import Counter
+    miss = Counter((l["camp"], l["adset"], l["ad"]) for l in leads if l["src"] == "meta" and not l["trk"])
+    if miss:
+        print("  [match] UTMs sem anúncio correspondente (campanha | conjunto | anúncio : leads):", file=sys.stderr)
+        for (c, a, d), n in miss.most_common(12):
+            print(f"    {n:3d} :: {c}  ||  {a}  ||  {d}", file=sys.stderr)
+        print("  [match] conjuntos existentes no Meta nas mesmas campanhas:", file=sys.stderr)
+        for c in sorted({k[0] for k in miss}):
+            sets = sorted({m['adset'] for m in meta if match_key(m['camp']) == match_key(c)})
+            print(f"    {c} -> {sets if sets else 'CAMPANHA NÃO EXISTE NO META'}", file=sys.stderr)
     dates = sorted({d for d in ([l["d"] for l in leads if l["d"]] + [m["d"] for m in meta if m["d"]])})
     now_brt = datetime.now(BRT)              # carimbo "ultima atualizacao" (hora local do gestor)
     hoje_conta = datetime.now(ACCOUNT_TZ)    # "hoje" do funil = dia no fuso da conta de anuncios
