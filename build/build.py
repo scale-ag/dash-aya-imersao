@@ -392,6 +392,12 @@ def clean_name(s: str | None) -> str:
     return re.sub(r"\s+", " ", (s or "").strip())
 
 
+def last_seg(s: str | None) -> str:
+    """Último trecho de um nome no padrão 'A | B | C' (sem maiúsculas/espaços extras)."""
+    parts = [p for p in (clean_name(s) or "").split("|") if p.strip()]
+    return parts[-1].strip().casefold() if parts else ""
+
+
 def match_key(s: str | None) -> str:
     """Chave do casamento leads × Meta: sem maiúsculas e sem espaços duplicados."""
     return clean_name(s).casefold()
@@ -720,6 +726,12 @@ def process(leads_rows, meta_rows):
         for k in canon:
             m[k] = canon[k][match_key(m[k])]
 
+    # índice do casamento de reserva: (último trecho da campanha, anúncio) -> {(camp, adset, ad)}
+    fallback_idx: dict[tuple[str, str], set] = {}
+    for k, names in meta_keys.items():
+        fallback_idx.setdefault((last_seg(names[0]), k[2]), set()).add(names)
+    fallback_hits: dict[tuple[str, str], int] = {}
+
     # ---- Caminho de captação por linha do Meta ----
     pv_camp: dict[str, float] = {}
     for m in meta:
@@ -794,6 +806,14 @@ def process(leads_rows, meta_rows):
             adset = utm_value(cell(row, lidx["utm_term"]))
             ad = utm_value(cell(row, lidx["utm_content"]))
             hit = meta_keys.get((match_key(camp), match_key(adset), match_key(ad))) if (camp and adset and ad) else None
+            if not hit and camp and ad:
+                # Casamento de RESERVA (nome da campanha na UTM diferente do Meta, ex.
+                # campanha renomeada): mesmo anúncio dentro da campanha cujo ÚLTIMO trecho
+                # do nome ("... | LL Leads Qualificados") coincide — só se houver UMA opção.
+                opts = fallback_idx.get((last_seg(camp), match_key(ad)), set())
+                if len(opts) == 1:
+                    hit = next(iter(opts))
+                    fallback_hits[(camp, hit[0])] = fallback_hits.get((camp, hit[0]), 0) + 1
             if hit:
                 camp, adset, ad = hit
             else:   # sem casamento exato: usa o nome canônico do Meta quando a dimensão existe lá
@@ -842,6 +862,9 @@ def process(leads_rows, meta_rows):
             "_pk": phone_key(phone),
         })
 
+    for (c_utm, c_meta), n in fallback_hits.items():
+        print(f"  [match] reserva: {n} lead(s) com utm_campaign '{c_utm}' ligados à campanha do Meta '{c_meta}'", file=sys.stderr)
+    print(f"  [match] campanhas no Meta: {sorted({m['camp'] for m in meta})}", file=sys.stderr)
     # diagnóstico do casamento (log): UTMs de leads pagos que não existem na aba de Queries
     from collections import Counter
     miss = Counter((l["camp"], l["adset"], l["ad"]) for l in leads if l["src"] == "meta" and not l["trk"])
