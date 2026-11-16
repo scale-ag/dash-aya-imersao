@@ -54,6 +54,7 @@ import time
 import unicodedata
 import urllib.error
 import urllib.request
+import urllib.parse
 from datetime import datetime, timezone, timedelta
 
 # Planilha de Leads ("Imersao AYA - Inscricoes") — fonte principal (formulario da LP).
@@ -68,6 +69,10 @@ EXPORT_URL = "https://docs.google.com/spreadsheets/d/{sid}/export?format=csv&gid
 # Sem gid o Google exporta a 1a aba da planilha. Usado como 2a tentativa quando o
 # CSV do gid configurado nao tem o cabecalho esperado (ex.: alguem reordenou abas).
 EXPORT_URL_FIRST_TAB = "https://docs.google.com/spreadsheets/d/{sid}/export?format=csv"
+# Export de uma aba pelo NOME (gviz) — usado na aba "Seguidores".
+GVIZ_URL = "https://docs.google.com/spreadsheets/d/{sid}/gviz/tq?tqx=out:csv&sheet={sheet}"
+SEG_SHEET = "Seguidores"   # aba de campanhas de seguidores (mesma planilha das Queries)
+SEG_REQUIRED = [["day"], ["amount spent"], ["seguidores"]]
 
 # Identificação do cliente/conta (usada só em textos/relatórios — não afeta o cruzamento de dados).
 CLIENT_NAME = "Mayara Sansana"
@@ -241,6 +246,34 @@ def crm_stage(status: str) -> str:
 def phone_key(p: str) -> str:
     d = re.sub(r"\D", "", p or "")
     return d[-11:] if len(d) >= 10 else ""
+
+
+def build_followers(rows: list[list[str]] | None) -> list[dict]:
+    """Aba "Seguidores": gasto/impressões/cliques da extração do Meta + SEGUIDORES
+    (coluna lançada à mão). Seguidores vazio = não preenchido (None) — diferente de 0:
+    a linha entra no gasto, mas não no custo por seguidor. A coluna "Custo por
+    seguidor" da planilha é ignorada (a dash calcula)."""
+    if not rows:
+        return []
+    idx = header_index(rows[0], {"day": ["day"], "camp": ["campaign name"], "adset": ["ad set name"],
+                                 "ad": ["ad name"], "sp": ["amount spent"], "im": ["impressions"],
+                                 "cl": ["link clicks"], "seg": ["seguidores"]})
+    print(f"  [seg] colunas mapeadas: { {k: col_letter(v) for k, v in idx.items()} }", file=sys.stderr)
+    out = []
+    for row in rows[1:]:
+        d = parse_date(cell(row, idx["day"]))
+        if not d:
+            continue
+        raw = cell(row, idx["seg"])
+        seg = int(round(to_float(raw))) if raw.strip() else None
+        sp, im = round(to_float(cell(row, idx["sp"])), 4), to_float(cell(row, idx["im"]))
+        if not sp and not im and not seg:
+            continue
+        out.append({"d": d, "camp": clean_name(cell(row, idx["camp"])) or "(sem campanha)",
+                    "adset": clean_name(cell(row, idx["adset"])) or "(sem conjunto)",
+                    "ad": clean_name(cell(row, idx["ad"])) or "(sem anúncio)",
+                    "sp": sp, "im": im, "cl": to_float(cell(row, idx["cl"])), "seg": seg})
+    return out
 
 
 def apply_crm(data: dict, crm_rows: list[list[str]] | None) -> None:
@@ -978,6 +1011,7 @@ def main():
     ap.add_argument("--leads-file", help="CSV local da planilha de Leads (fonte principal)")
     ap.add_argument("--meta-file", help="CSV local da aba Queries | AYA (Meta Ads)")
     ap.add_argument("--crm-file", help="CSV local do CRM do comercial (opcional)")
+    ap.add_argument("--seg-file", help="CSV local da aba Seguidores (opcional)")
     ap.add_argument("--template", default="build/template.html")
     ap.add_argument("--out", default="dist/index.html")
     args = ap.parse_args()
@@ -993,6 +1027,32 @@ def main():
         except (SystemExit, Exception) as exc:    # CRM nunca derruba a dash
             print(f"  [crm] AVISO: CRM não carregado ({exc!r}) — publicando sem o funil comercial", file=sys.stderr)
     apply_crm(data, crm_rows)
+    seg_rows = None
+    if args.seg_file:
+        seg_rows = read_csv_file(args.seg_file)
+    elif not args.leads_file:
+        try:
+            r = fetch_csv(GVIZ_URL.format(sid=SPREADSHEET_ID_META, sheet=urllib.parse.quote(SEG_SHEET)))
+            if header_has(r, SEG_REQUIRED):
+                seg_rows = r
+            else:
+                print(f"  [seg] AVISO: aba '{SEG_SHEET}' sem o cabeçalho esperado ({r[0][:8] if r else 'vazia'})", file=sys.stderr)
+        except Exception as exc:     # seguidores nunca derrubam a dash
+            print(f"  [seg] AVISO: aba '{SEG_SHEET}' não carregada ({exc!r})", file=sys.stderr)
+    data["seg"] = build_followers(seg_rows)
+    S = data["seg"]
+    if S:
+        print(f"  seguidores : {len(S)} linhas · {S[0]['d'] if S else '-'}..{max(r['d'] for r in S)} · gasto R$ {sum(r['sp'] for r in S):,.2f} · "
+              f"seguidores {sum(r['seg'] or 0 for r in S)} · {sum(1 for r in S if r['seg'] is None)} linha(s) sem preencher", file=sys.stderr)
+        # sobreposição com a aba de Queries (mesmo dia+campanha+conjunto+anúncio) — evita contar gasto 2x
+        mk = {(m['d'], match_key(m['camp']), match_key(m['adset']), match_key(m['ad'])) for m in data['meta']}
+        ov = [r for r in S if (r['d'], match_key(r['camp']), match_key(r['adset']), match_key(r['ad'])) in mk]
+        print(f"  [seg] sobreposição com Queries: {len(ov)} linha(s) · R$ {sum(r['sp'] for r in ov):,.2f}", file=sys.stderr)
+        print(f"  [seg] campanhas: {sorted({r['camp'] for r in S})}", file=sys.stderr)
+        print(f"  [seg] conjuntos: {sorted({r['adset'] for r in S})}", file=sys.stderr)
+        dist_q = sorted({(m['camp'], m['adset']) for m in data['meta'] if 'E1-DIST' in m['camp'].upper() or 'SEGUIDOR' in m['camp'].upper()})
+        print(f"  [seg] campanhas de seguidores na aba Queries: {dist_q} · gasto R$ "
+              f"{sum(m['sp'] for m in data['meta'] if 'E1-DIST' in m['camp'].upper() or 'SEGUIDOR' in m['camp'].upper()):,.2f}", file=sys.stderr)
 
     # Insights de Tráfego (texto pré-escrito) — lidos do arquivo versionado ao
     # lado do template. Sem chamada de API no build.
