@@ -359,7 +359,7 @@ function fitAxisLabel(label, maxPx){
 }
 /* keepOrder=true: mantém a ordem recebida (ex.: faixas de faturamento da menor
    para a maior) em vez de ordenar pelo valor. */
-function hbar(id, items, valFn, colorFn, top, unit, keepOrder){
+function hbar(id, items, valFn, colorFn, top, unit, keepOrder, fmt){
   destroy(id); const el=document.getElementById(id); if(!el) return;
   unit=unit||'leads';
   let arr=keepOrder?items.slice():items.slice().sort((a,b)=>valFn(b)-valFn(a)); if(top) arr=arr.slice(0,top);
@@ -367,12 +367,13 @@ function hbar(id, items, valFn, colorFn, top, unit, keepOrder){
   charts[id]=new Chart(el,{type:'bar', plugins:[barLabels],
     data:{labels:arr.map(x=>x.label), datasets:[{label:unit,data:arr.map(valFn),backgroundColor:arr.map(colorFn||(()=>cvar('--chart-leads'))),borderRadius:3}]},
     options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,layout:{padding:{right:28}},
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>intf(c.raw)+' '+unit}}},
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>(fmt||intf)(c.raw)+(fmt?'':' '+unit)}}},
       scales:{x:{beginAtZero:true,ticks:{color:mut,precision:0,font:{size:10}},grid:{color:cgrid()}},
               y:{ticks:{color:mut,font:{size:10},callback:function(v){ return fitAxisLabel(this.getLabelForValue(v), Math.max(60,(this.chart.width-28)/2-16)); }},grid:{display:false}}}}});
+  charts[id].$fmt=fmt||null;
 }
-const barLabels={id:'barLabels',afterDatasetsDraw(ch){const{ctx}=ch;ctx.save();ctx.font='600 11px Segoe UI,system-ui';ctx.fillStyle=cmuted();ctx.textBaseline='middle';
-  ch.getDatasetMeta(0).data.forEach((el,i)=>{const v=ch.data.datasets[0].data[i]; if(!v)return; ctx.fillText(intf(v),el.x+5,el.y);});ctx.restore();}};
+const barLabels={id:'barLabels',afterDatasetsDraw(ch){ const F=ch.$fmt||intf;const{ctx}=ch;ctx.save();ctx.font='600 11px Segoe UI,system-ui';ctx.fillStyle=cmuted();ctx.textBaseline='middle';
+  ch.getDatasetMeta(0).data.forEach((el,i)=>{const v=ch.data.datasets[0].data[i]; if(!v)return; ctx.fillText(F(v),el.x+5,el.y);});ctx.restore();}};
 
 /* Indicadores por dia (aba Meta Ads): séries de taxas calculadas do `daily()`.
    series: [{label,fn(x)->valor|null,type:'brl'|'pct'|'num',axis:'y'|'y1',color}] */
@@ -1098,6 +1099,7 @@ function renderPace(){
   // ---- séries diárias realizadas (todo o histórico, sem filtro de período) ----
   const act={}; const g=d=>act[d]||(act[d]={sp:0,leads:0,mqls:0,vendas:0});
   META.forEach(r=>{ if(r.d) g(r.d).sp+=r.sp*taxf(); });
+  (DATA.seg||[]).forEach(r=>{ if(r.d) g(r.d).sp+=r.sp*taxf(); });   // verba = captação + seguidores
   LEADS.forEach(l=>{ if(l.d){ const a=g(l.d); a.leads+=1; a.mqls+=(l.q||0); } });
   VENDAS.forEach(v=>{ if(v.d) g(v.d).vendas+=1; });
   const val=(d,k)=>act[d]?act[d][k]:0;
@@ -1130,7 +1132,7 @@ function renderPace(){
   const diaN=daysIncl(PL.inicio,today);
   sub.textContent=`Hoje ${brdate(today)} (${weekday(today)}) · dia ${diaN} de ${PLAN_DAYS} do plano · faltam ${restVendas} dias para o fim das vendas (${brdate(PL.fim_vendas)}) e ${dayDiff(today,PL.imersao)} para a imersão (${brdate(PL.imersao)})`;
   document.getElementById('paceTopNote').innerHTML=
-    `Sempre do início do plano (${brdate(PL.inicio)}) até hoje — <b>não segue o filtro de período</b>. Gasto ${STATE.tax?'<b>com</b>':'<b>sem</b>'} o imposto Meta (toggle no topo). `
+    `Sempre do início do plano (${brdate(PL.inicio)}) até hoje — <b>não segue o filtro de período</b>. Gasto ${STATE.tax?'<b>com</b>':'<b>sem</b>'} o imposto Meta (toggle no topo) = <b>captação (Queries) + seguidores</b>. `
     +`Verba planejada: ${PL.orcamento_mensal?'<b>divisão mensal definida</b>':'<b>plano linear</b> ('+brl(PL.orcamento_total/PLAN_DAYS)+'/dia) até o Rafael definir a divisão por mês'}. `
     +`Ritmos e projeções = média dos últimos 7 dias fechados (${nW?brdate(wIni)+' a '+brdate(ontem):'sem dias fechados ainda'}). `
     +(temVendas?'':'<b>Vendas: ainda sem fonte de dados</b> — conecte a planilha de vendas do comercial para ver vendido × meta. ')
@@ -1280,6 +1282,97 @@ function renderPace(){
     {key:'esp',label:'Vagas esperadas (meta)',type:'num'},{key:'vac',label:'Vendas acum.',type:'int'}]});
 }
 
+/* ---------------- PAGE: Seguidores Instagram ----------------
+   DATA.seg = linhas da aba "Seguidores": {d,camp,adset,ad,sp,im,cl,seg}; seg null =
+   não preenchido (entra no gasto, não no custo por seguidor; 0 conta). */
+const SEG = DATA.seg || [];
+const segSel={C:new Set(),A:new Set(),D:new Set()};
+function segAgg(rows){ const a={sp:0,im:0,cl:0,segs:0,spseg:0,clseg:0,nseg:0,npend:0};
+  rows.forEach(r=>{ a.sp+=r.sp; a.im+=r.im; a.cl+=r.cl;
+    if(r.seg!=null){ a.segs+=r.seg; a.spseg+=r.sp; a.clseg+=r.cl; a.nseg++; } else a.npend++; });
+  return a; }
+function segDerive(a){ const g=a.sp*taxf();
+  return {gasto:g, im:a.im, cl:a.cl, seg:a.nseg?a.segs:null,
+    cpm:a.im?g/a.im*1000:null, ctr:a.im?a.cl/a.im:null, cpc:a.cl?g/a.cl:null,
+    cpseg:a.segs?(a.spseg*taxf())/a.segs:null, segcl:a.clseg?a.segs/a.clseg:null}; }
+function segScope(ex){ let r=SEG.filter(x=>dateActive(x.d));
+  if(ex!=='C'&&segSel.C.size) r=r.filter(x=>segSel.C.has(x.camp));
+  if(ex!=='A'&&segSel.A.size) r=r.filter(x=>segSel.A.has(x.adset));
+  if(ex!=='D'&&segSel.D.size) r=r.filter(x=>segSel.D.has(x.ad));
+  return r; }
+function segSelDim(dim,key,ctrl){ const s=segSel[dim];
+  if(ctrl){ s.has(key)?s.delete(key):s.add(key); }
+  else { const sole=s.has(key)&&s.size===1&&!Object.entries(segSel).some(([k,x])=>k!==dim&&x.size);
+    Object.values(segSel).forEach(x=>x.clear()); if(!sole) s.add(key); }
+  renderSeg(); }
+const SEG_COLS=[
+  {key:'gasto',label:'Gasto',type:'brl',heat:'gasto'},{key:'im',label:'Impr.',type:'int'},{key:'cpm',label:'CPM',type:'brl'},
+  {key:'cl',label:'Cliques',type:'int'},{key:'ctr',label:'CTR',type:'pct'},{key:'cpc',label:'CPC',type:'brl'},
+  {key:'seg',label:'Seguidores',type:'int',heat:'mqls',w:112},{key:'cpseg',label:'C/Seguidor',type:'brl',w:110},{key:'segcl',label:'Seg./Clique',type:'pct',w:108}];
+const segCells=d=>({gasto:d.gasto,im:d.im,cpm:d.cpm,cl:d.cl,ctr:d.ctr,cpc:d.cpc,seg:d.seg,cpseg:d.cpseg,segcl:d.segcl});
+function renderSeg(){
+  const all=segScope(null), a=segAgg(all), d=segDerive(a);
+  if(!SEG.length){ document.getElementById('segFunnel').innerHTML='<p class="note">Aba Seguidores não carregada nesta atualização.</p>'; return; }
+  document.getElementById('segFunnel').innerHTML=funnelHTML([
+    ['Gasto Total', brl(d.gasto), [], false, 'hl-gasto', d.gasto],
+    ['Impressões', intf(d.im), [['CPM',brl(d.cpm)]]],
+    ['Cliques', intf(d.cl), [['CTR',pct(d.ctr)],['CPC',brl(d.cpc)]]],
+    ['Seguidores', intf(d.seg), [['C/Seguidor',brl(d.cpseg)],['Seg./Clique',pct(d.segcl)]], false, 'hl-mql'],
+  ]); fitFunnelValues();
+  // linhas sem seguidores preenchidos
+  const pend=all.filter(r=>r.seg==null), spPend=pend.reduce((x,r)=>x+r.sp,0)*taxf();
+  const dPend=[...new Set(pend.map(r=>ddmm(r.d)))].sort();
+  document.getElementById('segPend').innerHTML=pend.length?`<div class="alerts"><div class="al-title">⚠ Seguidores não preenchidos</div><div class="al-item"><b>${brl(spPend)}</b> de gasto em ${pend.length} linha${pend.length>1?'s':''} sem seguidores lançados (${dPend.join(', ')}): entra no gasto, mas não no custo por seguidor. Preencha a coluna "Seguidores" na planilha.</div></div>`:'';
+  // diário
+  const days={}; all.forEach(r=>{ (days[r.d]=days[r.d]||[]).push(r); });
+  const dd=Object.keys(days).sort().map(k=>({d:k, a:segAgg(days[k])}));
+  destroy('segCombo'); const el=document.getElementById('segCombo');
+  if(el){ const mut=cmuted(), c1=cvar('--chart-mqls'), c2=cvar('--chart-gasto'), c3=cvar('--chart-cpmql');
+    charts.segCombo=new Chart(el,{data:{labels:dd.map(x=>ddmm(x.d)),datasets:[
+      {type:'bar',label:'Seguidores',data:dd.map(x=>segDerive(x.a).seg),backgroundColor:c1,yAxisID:'y',borderRadius:3,order:3},
+      {type:'line',label:'Gasto',data:dd.map(x=>+(x.a.sp*taxf()).toFixed(2)),borderColor:c2,backgroundColor:c2,yAxisID:'y1',borderWidth:2,pointRadius:2,tension:.25,order:1},
+      {type:'line',label:'Custo/Seguidor',data:dd.map(x=>{const v=segDerive(x.a).cpseg; return v==null?null:+v.toFixed(2);}),borderColor:c3,backgroundColor:c3,yAxisID:'y1',borderWidth:2,pointRadius:2,spanGaps:true,tension:.25,order:0}]},
+      options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+        plugins:{legend:{labels:{color:cink(),boxWidth:10,usePointStyle:true,font:{size:11}}},tooltip:{callbacks:{label:c=>c.dataset.label+': '+(c.dataset.yAxisID==='y1'?brl(c.raw):intf(c.raw))}}},
+        scales:{x:{ticks:{color:mut,font:{size:10}},grid:{display:false}},
+          y:{position:'left',beginAtZero:true,ticks:{color:mut,font:{size:10},precision:0},grid:{color:cgrid()},title:{display:true,text:'Seguidores',color:mut,font:{size:10}}},
+          y1:{position:'right',beginAtZero:true,ticks:{color:mut,font:{size:10}},grid:{display:false},title:{display:true,text:'R$',color:mut,font:{size:10}}}}}}); }
+  renderTable({id:'segDaily', center:true, fit:true,
+    cols:[{key:'date',label:'Data',type:'date'},{key:'wd',label:'Dia',type:'dim',w:44}].concat(SEG_COLS),
+    rows:dd.slice().reverse().map(x=>({k:x.d, cells:{date:x.d,wd:weekday(x.d),...segCells(segDerive(x.a))}})),
+    total:{date:null,wd:'',...segCells(d)}, selectable:true, selSet:STATE.selDays,
+    onSelect:(k,e)=>{ toggleSet(STATE.selDays,k,e&&(e.ctrlKey||e.metaKey)); syncDateInputs(); renderAll(); }});
+  // KPIs
+  const nDays=dd.length||1;
+  const byAd={}; all.forEach(r=>{ (byAd[r.ad]=byAd[r.ad]||[]).push(r); });
+  const ads=Object.entries(byAd).map(([ad,rr])=>({ad, d:segDerive(segAgg(rr))}));
+  const best=ads.filter(x=>x.d.cpseg!=null&&x.d.seg>0).sort((x,y)=>x.d.cpseg-y.d.cpseg)[0];
+  const top=ads.filter(x=>x.d.seg>0).sort((x,y)=>y.d.seg-x.d.seg)[0];
+  const short=s=>{ s=String(s||'—'); return s.length>26?s.slice(0,25)+'…':s; };
+  document.getElementById('segKpis').innerHTML=[
+    {label:'Seguidores',val:intf(d.seg),aux:'lançados na planilha',hero:true},
+    {label:'Custo por seguidor',val:brl(d.cpseg),aux:'só linhas preenchidas',hero:true},
+    {label:'Seguidores por dia',val:numf((d.seg||0)/nDays),aux:brl(d.gasto/nDays)+' de gasto/dia'},
+    {label:'Seg./Clique',val:pct(d.segcl),aux:'cliques que viraram seguidor'},
+    {label:'Investimento',val:brl(d.gasto),aux:intf(dd.length)+' dias com veiculação'},
+    {label:'Melhor custo/seguidor',val:best?brl(best.d.cpseg):'-',aux:best?short(best.ad):'—'},
+    {label:'Top anúncio (seguidores)',val:top?intf(top.d.seg):'-',aux:top?short(top.ad):'—'},
+    {label:'CPM',val:brl(d.cpm),aux:intf(d.im)+' impressões'},
+    {label:'CTR',val:pct(d.ctr),aux:intf(d.cl)+' cliques · CPC '+brl(d.cpc)},
+    {label:'Linhas sem seguidores',val:intf(a.npend),aux:a.npend?'preencher na planilha':'tudo preenchido',cls:a.npend?'pc-warn':''},
+  ].map(kpiCard).join('');
+  hbar('segBarAd', ads.filter(x=>x.d.seg>0).map(x=>({label:x.ad,leads:x.d.seg})), x=>x.leads, ()=>cvar('--chart-mqls'), 10, 'seguidores');
+  hbar('segCpsAd', ads.filter(x=>x.d.cpseg!=null&&x.d.seg>0).sort((x,y)=>x.d.cpseg-y.d.cpseg).slice(0,10).map(x=>({label:x.ad,leads:+x.d.cpseg.toFixed(2)})),
+    x=>x.leads, ()=>cvar('--chart-cpmql'), 10, 'R$/seguidor', true, brl);
+  // hierarquia (cada tabela exclui a própria dimensão do filtro)
+  const hier=(id,dim,key,label)=>{ const rr=segScope(dim), g={}; rr.forEach(r=>{ (g[r[key]]=g[r[key]]||[]).push(r); });
+    renderTable({id, center:true, cols:[{key:'dim',label,type:'dim',big:true,stk:'l'}].concat(SEG_COLS.map((c,i)=>i===0?{...c,stk:'l'}:c)),
+      rows:Object.entries(g).map(([k,v])=>({k, cells:{dim:k,...segCells(segDerive(segAgg(v)))}})),
+      total:{dim:null,...segCells(segDerive(segAgg(rr)))}, selectable:true, selSet:segSel[dim],
+      onSelect:(k,e)=>segSelDim(dim,k,e&&(e.ctrlKey||e.metaKey))}); };
+  hier('segCamp','C','camp','Campanha'); hier('segAdset','A','adset','Conjunto'); hier('segAd','D','ad','Anúncio');
+}
+
 /* ---------------- date presets ---------------- */
 const PRESETS=[
   ['hoje','Hoje',()=>[TODAY,TODAY]],
@@ -1375,12 +1468,13 @@ function setPage(p){ STATE.page=p;
   document.getElementById('page-meta').classList.toggle('active',p==='meta');
   document.getElementById('page-rel').classList.toggle('active',p==='rel');
   document.getElementById('page-pace').classList.toggle('active',p==='pace');
-  document.getElementById('ptitle').textContent = {meta:'Meta Ads',rel:'Insights de IA',pace:'Metas & Pacing'}[p]||'Visão Geral';
+  document.getElementById('page-seg').classList.toggle('active',p==='seg');
+  document.getElementById('ptitle').textContent = {meta:'Meta Ads',rel:'Insights de IA',pace:'Metas & Pacing',seg:'Seguidores Instagram'}[p]||'Visão Geral';
   document.getElementById('navToggle').checked=false;
-  history.replaceState(null,'', '#'+(['meta','rel','pace'].includes(p)?p:'geral'));
+  history.replaceState(null,'', '#'+(['meta','rel','pace','seg'].includes(p)?p:'geral'));
   renderAll();
 }
-function renderAll(){ if(STATE.page==='meta') renderMeta(); else if(STATE.page==='rel') renderRelatorio(); else if(STATE.page==='pace') renderPace(); else renderGeral(); }
+function renderAll(){ if(STATE.page==='meta') renderMeta(); else if(STATE.page==='rel') renderRelatorio(); else if(STATE.page==='pace') renderPace(); else if(STATE.page==='seg') renderSeg(); else renderGeral(); }
 
 function applyTheme(){ const t=localStorage.getItem('dm_theme'); if(t==='light') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme','dark'); }
 applyTheme();
@@ -1397,7 +1491,7 @@ document.getElementById('ppCancel').addEventListener('click',ppClose);
 document.getElementById('periodPop').addEventListener('click',e=>e.stopPropagation());
 document.addEventListener('click',()=>{ if(ppIsOpen()) ppClose(); });
 document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&ppIsOpen()) ppClose(); });
-document.getElementById('clearBtn').addEventListener('click',()=>{ STATE.mSelC.clear();STATE.mSelA.clear();STATE.mSelAd.clear();STATE.selDays.clear(); applyPreset('mes'); });
+document.getElementById('clearBtn').addEventListener('click',()=>{ Object.values(segSel).forEach(x=>x.clear()); STATE.mSelC.clear();STATE.mSelA.clear();STATE.mSelAd.clear();STATE.selDays.clear(); applyPreset('mes'); });
 /* Modo cliente: esconde lista de leads, alertas, notas técnicas e a aba Insights —
    para mandar print/link ao cliente. Ativa por botão ou pelo link com ?cliente=1. */
 function applyClientMode(on){ document.documentElement.classList.toggle('client-mode',on);
@@ -1433,7 +1527,7 @@ document.getElementById('buildFoot').textContent='build __BUILD_ID__';
 document.getElementById('buildFoot2').textContent='· build __BUILD_ID__';
 
 syncDateInputs();
-setPage({'#meta':'meta','#rel':'rel','#pace':'pace'}[location.hash]||'geral');
+setPage({'#meta':'meta','#rel':'rel','#pace':'pace','#seg':'seg'}[location.hash]||'geral');
 
 /* auto-refresh com cache-bust ~30 min */
 setTimeout(()=>{ location.href=location.pathname+'?t='+Date.now()+(document.documentElement.classList.contains('client-mode')?'&cliente=1':'')+location.hash; }, 30*60*1000);

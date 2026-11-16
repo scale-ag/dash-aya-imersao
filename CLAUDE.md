@@ -124,6 +124,13 @@ Registro de meta: `{d,camp,adset,ad,sp,im,cl,rc,pv}`.
   status "Vendido" (data de "Data da venda" se existir; senão conta no dia de hoje). Falha no CRM não derruba o build.
   UI: "Funil comercial" na aba Metas & Pacing (etapas, vendedores, MQLs não trabalhados) e coluna CRM na lista de leads.
 
+- **Seguidores** (aba `seg`, `renderSeg`): aba "Seguidores" da planilha de Queries lida por nome (gviz,
+  `build.py::build_followers`): `{d,camp,adset,ad,sp,im,cl,seg}`; `seg` vazio = não preenchido (fica fora do
+  custo por seguidor, entra no gasto). Funil Gasto → Impressões → Cliques → Seguidores, diário, KPIs, anúncios e
+  hierarquia com filtro cruzado próprio (`segSel`). **O gasto de seguidores entra no investimento da aba Metas &
+  Pacing** (verba = captação + conteúdo); a aba Queries não tem mais a campanha E1-DIST (sem sobreposição — o
+  build loga a checagem). Falha ao ler a aba não derruba o build.
+
 **Regras das tabelas:** cabeçalho sticky; ordenação tri‑state; colunas redimensionáveis;
 "Total Geral" fixo; **nenhum valor/dimensão truncado** (tabela fit ganha rolagem lateral se
 faltar espaço — `fitColWidth`); seleção com toggle + Ctrl; filtro cruzado bidirecional.
