@@ -1039,6 +1039,54 @@ def render(data, template_path):
     return tpl
 
 
+HIST_SHEET = "Historico_Leads_AYA"   # cópia dos dados originais (a aba principal perdeu os contatos antigos em 24/11)
+
+
+def merge_historico(leads_rows: list[list[str]], hist_rows: list[list[str]] | None) -> list[list[str]]:
+    """Completa a aba principal com a aba de histórico, casando pelo Token do Typeform e
+    pelo NOME da coluna: célula vazia na principal recebe o valor do histórico; Token que só
+    existe no histórico vira uma linha nova. Nunca sobrescreve valor já preenchido."""
+    if not leads_rows or not hist_rows or len(hist_rows) < 2:
+        return leads_rows
+    main_h = [norm(h) for h in leads_rows[0]]
+    hist_h = [norm(h) for h in hist_rows[0]]
+    if "token" not in main_h or "token" not in hist_h:
+        print("  [historico] sem coluna Token — ignorado", file=sys.stderr)
+        return leads_rows
+    hpos: dict[str, int] = {}
+    for i, h in enumerate(hist_h):
+        if h and h not in hpos:
+            hpos[h] = i
+    ti_m, ti_h = main_h.index("token"), hist_h.index("token")
+    by_tok = {}
+    for r in hist_rows[1:]:
+        t = cell(r, ti_h)
+        if t:
+            by_tok[t] = r
+    seen, filled, added = set(), 0, 0
+    out = [leads_rows[0]]
+    for r in leads_rows[1:]:
+        r = list(r) + [""] * (len(main_h) - len(r))
+        t = cell(r, ti_m)
+        hr = by_tok.get(t) if t else None
+        if hr is not None:
+            seen.add(t)
+            ch = False
+            for i, h in enumerate(main_h):
+                j = hpos.get(h)
+                if h and j is not None and not (r[i] or "").strip() and cell(hr, j):
+                    r[i] = cell(hr, j)
+                    ch = True
+            filled += ch
+        out.append(r)
+    for t, hr in by_tok.items():
+        if t not in seen:
+            out.append([cell(hr, hpos[h]) if h in hpos else "" for h in main_h])
+            added += 1
+    print(f"  [historico] aba '{HIST_SHEET}': {len(by_tok)} tokens · {filled} linha(s) completada(s) · {added} só no histórico (adicionadas)", file=sys.stderr)
+    return out
+
+
 def load_inputs(leads_file: str | None, meta_file: str | None):
     leads_rows = load_sheet(SPREADSHEET_ID_LEADS, GID_LEADS, leads_file, LEADS_REQUIRED, "leads")
     meta_rows = load_sheet(SPREADSHEET_ID_META, GID_META, meta_file, META_REQUIRED, "meta")
@@ -1056,6 +1104,12 @@ def main():
     args = ap.parse_args()
 
     leads_rows, meta_rows = load_inputs(args.leads_file, args.meta_file)
+    if not args.leads_file:     # build online: completa com a aba de histórico (falha não derruba)
+        try:
+            hist = fetch_csv(GVIZ_URL.format(sid=SPREADSHEET_ID_LEADS, sheet=urllib.parse.quote(HIST_SHEET)))
+            leads_rows = merge_historico(leads_rows, hist)
+        except (SystemExit, Exception) as exc:
+            print(f"  [historico] AVISO: aba não carregada ({exc!r})", file=sys.stderr)
     data = process(leads_rows, meta_rows)
     crm_rows = None
     if args.crm_file:
