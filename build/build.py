@@ -441,7 +441,10 @@ _MACRO_RE = re.compile(r"\{\{.*\}\}")
 
 def utm_value(s: str | None) -> str:
     """UTM vazia ou com a macro do Meta NÃO substituída ("{{campaign.name}}") = sem valor."""
-    v = clean_name(s)
+    v = (s or "").strip()
+    if "%" in v or ("+" in v and " " not in v):   # UTM que chegou URL-encoded ("Teste+Lookalike", "%7C")
+        v = urllib.parse.unquote_plus(v)
+    v = clean_name(v)
     return "" if (not v or _MACRO_RE.search(v)) else v
 
 
@@ -721,8 +724,16 @@ def process(leads_rows, meta_rows):
          "adset": ["ad set name", "adset name"], "ad": ["ad name"],
          "spent": ["amount spent", "valor gasto"], "impr": ["impressions", "impressoes"],
          "clicks": ["link clicks", "cliques no link"], "reach": ["reach", "alcance"],
-         "lpv": ["landing page views", "visualizacoes da pagina de destino"]},
+         "lpv": ["landing page views", "visualizacoes da pagina de destino"],
+         "mleads": ["leads"]},
     )
+    _ml: dict[str, float] = {}
+    for _r in meta_rows[1:]:
+        _d = parse_date(cell(_r, midx["day"])) if midx.get("day") is not None else None
+        if _d and midx.get("mleads") is not None:
+            _ml[_d] = _ml.get(_d, 0) + to_float(cell(_r, midx["mleads"]))
+    print("  [meta leads/dia] contagem do próprio Meta (pixel), só p/ comparar: "
+          + " · ".join(f"{k[5:]}:{v:g}" for k, v in sorted(_ml.items())[-12:]), file=sys.stderr)
     print(f"  [meta] colunas mapeadas: { {k: col_letter(v) for k, v in midx.items()} }", file=sys.stderr)
 
     meta = []
