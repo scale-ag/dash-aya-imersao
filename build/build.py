@@ -814,6 +814,8 @@ def process(leads_rows, meta_rows):
     descartados = {"utm_medium_invalido": 0, "incompleto": 0, "teste": 0, "duplicado": 0}
     sem_meta = 0
     inc_diag: list[tuple] = []
+    utm_diag: list[tuple] = []
+    all_days: dict[str, int] = {}
     fat_nao_reconhecido: set[str] = set()
     tokens_vistos: set[str] = set()
     for row in leads_rows[1:]:
@@ -823,9 +825,16 @@ def process(leads_rows, meta_rows):
         email = cell_any(row, cand["email"])
         phone = cell_any(row, cand["phone"])
         utm_medium = cell(row, lidx["utm_medium"])
+        _dt0 = parse_lead_datetime(cell(row, lidx["submitted"]))
+        _k0 = _dt0.strftime("%Y-%m-%d") if _dt0 else "?"
+        all_days[_k0] = all_days.get(_k0, 0) + 1
         why = lead_discard_reason(utm_medium, name, email, phone)
         if why:
             descartados[why] += 1
+            if why == "utm_medium_invalido":
+                dtx = parse_lead_datetime(cell(row, lidx["submitted"]))
+                utm_diag.append((dtx.strftime("%Y-%m-%d") if dtx else "?", cell(row, lidx["utm_source"])[:25] or "-",
+                                 cell(row, lidx["utm_medium"])[:25] or "-", (cell(row, lidx["utm_campaign"]) or "-")[:50]))
             if why == "incompleto":   # diagnóstico SEM dados pessoais (log)
                 dtx = parse_lead_datetime(cell(row, lidx["submitted"]))
                 inc_diag.append((dtx.strftime("%Y-%m-%d") if dtx else "?",
@@ -906,6 +915,12 @@ def process(leads_rows, meta_rows):
     for (c_utm, c_meta), n in fallback_hits.items():
         print(f"  [match] reserva: {n} lead(s) com utm_campaign '{c_utm}' ligados à campanha do Meta '{c_meta}'", file=sys.stderr)
     print(f"  [match] campanhas no Meta: {sorted({m['camp'] for m in meta})}", file=sys.stderr)
+    print("  [linhas/dia] todas as linhas da planilha (inclui descartadas): " + " · ".join(f"{k[5:]}:{v}" for k, v in sorted(all_days.items())), file=sys.stderr)
+    if utm_diag:
+        from collections import Counter as _C2
+        print("  [sem utm valida] (dia, utm_source, utm_medium, utm_campaign) : qtd", file=sys.stderr)
+        for k, n in sorted(_C2(utm_diag).items()):
+            print(f"    {k} : {n}", file=sys.stderr)
     if inc_diag:
         from collections import Counter as _C
         print("  [incompletos] (dia, campos vazios N=nome E=email W=whatsapp, utm_medium, resposta 'investimento', faturamento) : qtd", file=sys.stderr)
